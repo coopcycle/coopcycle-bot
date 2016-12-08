@@ -10,7 +10,7 @@ var njk = expressNunjucks(app, {
 });
 
 var botsConfig = require('./bots.json');
-var baseURL = "http://coopcycle.dev";
+var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
 
 pm2.connect(function(err) {
   if (err) {
