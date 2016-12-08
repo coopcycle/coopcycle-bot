@@ -51,6 +51,7 @@ pm2.connect(function(err) {
 });
 
 app.use(express.static('web'));
+app.use('/gpx', express.static('gpx'));
 
 app.get('/', (req, res) => {
   pm2.connect(function(err) {
