@@ -1,9 +1,12 @@
 {% extends "layout.njk" %}
 
 {% block content %}
-<ul>
+<table class="table">
   {% for app in apps %}
-  <li>{{ app.name }}</li>
+  <tr>
+    <td>{{ app.name }}</td>
+    <td>{{ app.gpx }}</td>
+  </tr>
   {% endfor %}
-</ul>
+</table>
 {% endblock %}

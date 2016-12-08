@@ -18,12 +18,23 @@
   "dependencies": {
     "express": "^4.14.0",
     "express-nunjucks": "^2.0.2",
+    "file-loader": "^0.9.0",
     "form-data": "^2.1.2",
     "node-fetch": "^1.6.3",
     "nunjucks": "^3.0.0",
     "pm2": "^2.1.6",
     "underscore": "^1.8.3",
+    "url-loader": "^0.5.7",
     "ws": "^1.1.1",
     "xml2js": "^0.4.17"
+  },
+  "devDependencies": {
+    "bootstrap-sass": "^3.3.7",
+    "css-loader": "^0.26.1",
+    "extract-text-webpack-plugin": "^1.0.1",
+    "node-sass": "^3.13.0",
+    "sass-loader": "^4.0.2",
+    "style-loader": "^0.13.1",
+    "webpack": "^1.14.0"
   }
 }

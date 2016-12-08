@@ -1,7 +1,8 @@
 var pm2 = require('pm2');
 var _ = require('underscore');
 var expressNunjucks = require('express-nunjucks');
-var app = require('express')();
+var express = require('express');
+var app = express();
 
 app.set('view engine', 'njk');
 var njk = expressNunjucks(app, {
@@ -11,6 +12,14 @@ var njk = expressNunjucks(app, {
 
 var botsConfig = require('./bots.json');
 var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
+
+var bots = {};
+botsConfig.forEach(function(botConfig) {
+  bots[botConfig.username] = {
+    username: botConfig.username,
+    gpx: botConfig.gpx
+  }
+})
 
 pm2.connect(function(err) {
   if (err) {
@@ -41,17 +50,29 @@ pm2.connect(function(err) {
   });
 });
 
+app.use(express.static('web'));
+
 app.get('/', (req, res) => {
   pm2.connect(function(err) {
     if (err) {
       res.writeHead(500);
       return res.end('Could not connect to PM2');
     }
+
     pm2.list(function(err, apps) {
+
       pm2.disconnect();
+
       apps = _.filter(apps, function(app) {
-        return app.name.startsWith('coopcycle-bot');
-      })
+        return app.name.startsWith('coopcycle-bot-');
+      });
+      apps = _.map(apps, function(app) {
+        var username = app.name.replace('coopcycle-bot-', '');
+        return _.extend(app, {
+          gpx: bots[username].gpx
+        });
+      });
+
       res.render('index', {
         apps: apps
       });

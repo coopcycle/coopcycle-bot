@@ -1,3 +1,5 @@
 /node_modules/
 /gpx/*
 !gpx/.gitkeep
+/web/*
+!web/.gitkeep
