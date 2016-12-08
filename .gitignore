@@ -1,0 +1,3 @@
+/node_modules/
+/gpx/*
+!gpx/.gitkeep

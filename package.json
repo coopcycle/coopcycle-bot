@@ -2,9 +2,8 @@
   "name": "coopcycle-bot",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node bot.js"
   },
   "repository": {
     "type": "git",
@@ -15,5 +14,16 @@
   "bugs": {
     "url": "https://github.com/coopcycle/coopcycle-bot/issues"
   },
-  "homepage": "https://github.com/coopcycle/coopcycle-bot"
+  "homepage": "https://github.com/coopcycle/coopcycle-bot",
+  "dependencies": {
+    "express": "^4.14.0",
+    "express-nunjucks": "^2.0.2",
+    "form-data": "^2.1.2",
+    "node-fetch": "^1.6.3",
+    "nunjucks": "^3.0.0",
+    "pm2": "^2.1.6",
+    "underscore": "^1.8.3",
+    "ws": "^1.1.1",
+    "xml2js": "^0.4.17"
+  }
 }
