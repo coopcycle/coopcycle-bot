@@ -1,0 +1,19 @@
+{
+  "name": "coopcycle-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/coopcycle/coopcycle-bot.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/coopcycle/coopcycle-bot/issues"
+  },
+  "homepage": "https://github.com/coopcycle/coopcycle-bot"
+}
