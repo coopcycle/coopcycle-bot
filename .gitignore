@@ -3,3 +3,5 @@
 !gpx/.gitkeep
 /web/*
 !web/.gitkeep
+/data/*
+!data/.gitkeep
