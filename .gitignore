@@ -5,3 +5,4 @@
 !web/.gitkeep
 /data/*
 !data/.gitkeep
+/config.json

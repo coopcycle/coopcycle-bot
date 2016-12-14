@@ -36,7 +36,7 @@ pm2.connect(function(err) {
       pm2.start({
         name: 'coopcycle-bot-' + botConfig.username,
         script: 'bot.js',
-        watch: ['bot.js'],
+        watch: ['bot.js', './src/*.js'],
         args: [botConfig.username, botConfig.password, botConfig.gpx, baseURL],
       }, function(err, apps) {
         err ? reject() : resolve();
