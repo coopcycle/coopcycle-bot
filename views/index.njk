@@ -1,6 +1,11 @@
 {% extends "layout.njk" %}
 
 {% block content %}
+
+{% if not hasRole('ROLE_ADMIN') and user.isAuthenticated and not isConfigured %}
+  <div class="alert alert-warning">Bot not configured yet. <a href="/settings">Let's go.</a></div>
+{% endif %}
+
 <table id="couriers" class="table">
   <tbody>
   {% for courier in couriers %}
@@ -10,16 +15,22 @@
     <td>{{ courier.routine.name }}</td>
     <td><strong><span class="status"></span></strong></td>
     <td><button type="button" class="btn btn-xs btn-success start-stop" data-status="">Start bot</button></td>
+    {% if hasRole('ROLE_ADMIN') %}
     <td>
       <form method="post" action="/couriers/{{ courier.id }}/delete">
         <button type="submit" class="pull-right btn btn-xs btn-danger">Delete bot</button>
       </form>
     </td>
+    {% endif %}
   </tr>
   {% endfor %}
   </tbody>
 </table>
+
+{% if hasRole('ROLE_ADMIN') %}
 <a class="btn btn-primary" href="/couriers/new">Add a courier bot</a>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}

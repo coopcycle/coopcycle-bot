@@ -18,6 +18,14 @@
             <a href="/routines">Routines</a>
           </li>
         </ul>
+        <ul class="nav navbar-nav navbar-right">
+          {% if user.isAuthenticated %}
+          <li><a href="/settings">{{ user.username }}</a></li>
+          <li><a href="/logout">Logout</a></li>
+          {% else %}
+          <li><a href="/login">Login</a></li>
+          {% endif %}
+        </ul>
       </div>
     </nav>
     <div class="container">

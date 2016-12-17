@@ -1,0 +1,35 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+{% for message in messages.info %}
+  <div class="alert alert-success">{{ message }}</div>
+{% endfor %}
+{% for message in messages.error %}
+  <div class="alert alert-danger">{{ message }}</div>
+{% endfor %}
+<form method="post">
+  <div class="form-group">
+    <label for="token">Token</label>
+    <input type="password" class="form-control" id="token" value="{{ user.token }}" disabled>
+  </div>
+  <div class="form-group">
+    <label for="refresh-token">Refresh token</label>
+    <input type="password" class="form-control" id="refresh-token" value="{{ user.refreshToken }}" disabled>
+  </div>
+  <div class="form-group">
+    <label for="password">Routine</label>
+    <select name="routine" class="form-control">
+      <option value="">Select a routine</option>
+      {% for routine in routines %}
+        {% set selected = '' %}
+        {% if routine.id == settings.routineId %}
+          {% set selected = 'selected="selected"' %}
+        {% endif %}
+        <option value="{{ routine.id }}" {{ selected }}>{{ routine.name }}</option>
+      {% endfor %}
+    </select>
+    <p class="help-block">This is the routine that your bot will use.</p>
+  </div>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+{% endblock %}

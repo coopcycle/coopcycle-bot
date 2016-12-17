@@ -6,43 +6,41 @@ var Request = require('node-fetch').Request;
 var Headers = require('node-fetch').Headers;
 var _ = require('underscore');
 var DirectionsAPI = require('./DirectionsAPI');
+var Promise = require('promise');
 
-function Courier(username, password, route, httpBaseURL, wsBaseURL, directionsAPI) {
-  this.username = username;
-  this.password = password;
+function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI, db) {
+
+  this.model = model;
+
   this.route = route;
   this.httpBaseURL = httpBaseURL;
   this.wsBaseURL = wsBaseURL;
   this.directionsAPI = directionsAPI;
+  this.db = db;
 
   this.timeout = undefined;
   this.ws = undefined;
-  this.token = undefined;
-  this.refresh_token = undefined;
 
   this.currentIndex = 0;
   this.currentPosition = undefined;
+
+  var lastPosition = this.model.get('lastPosition');
+
+  if (lastPosition) {
+    var currentIndex = _.findIndex(route, (point) => {
+      return point.latitude === lastPosition.latitude && point.longitude === lastPosition.longitude
+    });
+    if (currentIndex) {
+      console.log('Starting at last position', lastPosition);
+      this.currentIndex = currentIndex;
+      this.currentPosition = lastPosition;
+    }
+  }
 }
-
-/* Private functions */
-
-function resolveFilename(username) {
-  return __dirname + "/../data/" + username + ".json";
-}
-
-function storeCredentials(credentials, cb) {
-  var filename = resolveFilename(credentials.username);
-  fs.writeFile(filename, JSON.stringify(credentials), function(err) {
-    if (err) throw err;
-    cb();
-  });
-}
-
-/* Public methods */
 
 Courier.prototype.createAuthorizedRequest = function(method, uri, data) {
   var headers = new Headers();
-  headers.append("Authorization", "Bearer " + this.token);
+  headers.append("Authorization", "Bearer " + this.model.get('token'));
   headers.append("Content-Type", "application/json");
 
   var options = {
@@ -57,23 +55,23 @@ Courier.prototype.createAuthorizedRequest = function(method, uri, data) {
 }
 
 Courier.prototype.getToken = function(cb) {
-  var filename = resolveFilename(this.username);
-  if (fs.existsSync(filename)) {
-    console.log('User info already saved');
-    var user = JSON.parse(fs.readFileSync(filename));
 
-    this.token = user.token;
-    this.refresh_token = user.refresh_token;
-
-    cb(user.token);
-  } else {
-    this.login(cb);
+  if (!this.model.get('token')) {
+    return this.login().then((credentials) => {
+      this.model.set('token', credentials.token);
+      this.model.set('refreshToken', credentials.refresh_token);
+      this.model.save().then(() => {
+        cb(this.model.get('token'));
+      });
+    });
   }
+
+  cb(this.model.get('token'));
 }
 
 Courier.prototype.refreshToken = function(cb) {
   var formData  = new FormData();
-  formData.append("refresh_token", this.refresh_token);
+  formData.append("refresh_token", this.model.get('refreshToken'));
   var request = new fetch.Request(this.httpBaseURL + '/api/token/refresh', {
     method: 'POST',
     body: formData
@@ -85,10 +83,10 @@ Courier.prototype.refreshToken = function(cb) {
       if (response.ok) {
         return response.json().then(function(credentials) {
           console.log('Token refreshed!');
-          storeCredentials(credentials, function() {
-            self.token = credentials.token;
-            self.refresh_token = credentials.refresh_token;
-            cb();
+          self.model.set('token', credentials.token);
+          self.model.set('refreshToken', credentials.refresh_token);
+          self.model.save().then(() => {
+            cb(self.model.get('token'));
           });
         });
       } else {
@@ -99,29 +97,22 @@ Courier.prototype.refreshToken = function(cb) {
     });
 }
 
-Courier.prototype.login = function(cb) {
+Courier.prototype.login = function() {
   console.log('Login ' + this.httpBaseURL + '/api/login_check');
+
   var formData  = new FormData();
-  formData.append("_username", this.username);
-  formData.append("_password", this.password);
+  formData.append("_username", this.model.get('username'));
+  formData.append("_password", this.model.get('password'));
   var request = new fetch.Request(this.httpBaseURL + '/api/login_check', {
     method: 'POST',
     body: formData
   });
 
   var self = this;
-  fetch(request)
+  return fetch(request)
     .then(function(response) {
-      console.log(response);
       if (response.ok) {
-        return response.json().then(function(credentials) {
-          console.log('Login success!');
-          storeCredentials(credentials, function() {
-            self.token = credentials.token;
-            self.refresh_token = credentials.refresh_token;
-            cb(credentials.token);
-          });
-        });
+        return response.json();
       } else {
         return response.json().then(function(json) {
           console.log(json.message);
@@ -133,11 +124,15 @@ Courier.prototype.login = function(cb) {
     });
 }
 
+Courier.prototype.randomPosition = function() {
+  return _.random(0, (this.route.length - 1));
+}
+
 Courier.prototype.nextPosition = function() {
 
   // Start at random position
   if (!this.currentIndex) {
-    this.currentIndex = _.random(0, (this.route.length - 1));
+    this.currentIndex = this.randomPosition();
   }
 
   if (this.currentIndex > (this.route.length - 1)) {
@@ -174,7 +169,7 @@ Courier.prototype.connect = function() {
   var self = this;
   this.getToken(function(token) {
 
-    console.log('Connecting to ws server', token);
+    console.log('Connecting to ws server');
 
     self.ws = new WebSocket(self.wsBaseURL + '/realtime', '', {
       headers: {
@@ -183,15 +178,17 @@ Courier.prototype.connect = function() {
     });
 
     self.ws.onopen = function() {
-      console.log('User ' + self.username + ' connected to server!');
+      console.log('User ' + self.model.get('username') + ' connected to server!');
       clearTimeout(self.timeout);
       self.updateCoords();
 
       console.log('Checking status...');
       self.checkStatus(function(data) {
         if (data.status === 'DELIVERING') {
+
           console.log('Resuming delivery of order', data.order);
           clearTimeout(self.timeout);
+
           if (data.order.status === 'ACCEPTED') {
             console.log('Going to restaurant to pick order');
             self.getDirectionsAndGoto(data.order.restaurant, function() {
@@ -199,6 +196,7 @@ Courier.prototype.connect = function() {
               self.pickOrder(data.order);
             });
           }
+
           if (data.order.status === 'PICKED') {
             console.log('Going to delivery address to deliver order');
             self.getDirectionsAndGoto(data.order.deliveryAddress, function() {
@@ -330,8 +328,9 @@ Courier.prototype.deliverOrder = function(order) {
       return response.json();
     })
     .then(function() {
-      console.log('Order delivered, nothing left to do');
-      // TODO Go back to routine
+      console.log('Order delivered, going back to routine');
+      var randomPosition = self.randomPosition();
+      self.getDirectionsAndGoto(randomPosition);
     });
 }
 

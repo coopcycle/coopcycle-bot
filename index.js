@@ -4,10 +4,16 @@ var expressNunjucks = require('express-nunjucks');
 var bodyParser = require('body-parser');
 var fs = require('fs');
 var express = require('express');
+var Promise = require('promise');
+
+var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
 
 var multer = require('multer');
 var storage = multer.memoryStorage();
 var upload = multer({ storage: storage });
+
+var API = require('./src/API')(baseURL);
+var User = require('./src/User');
 
 var Sequelize = require('sequelize');
 
@@ -17,30 +23,39 @@ var sequelize = new Sequelize('database', 'username', 'password', {
   storage: './data/db.sqlite'
 });
 
-var Courier = sequelize.define('courier', {
-  id: {
-    type: Sequelize.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  username: Sequelize.STRING,
-  password: Sequelize.STRING,
+var Db = require('./src/Db')(sequelize);
+
+Db.Courier.sync();
+Db.Routine.sync();
+
+/* Configure Passport */
+
+var ensureLoggedIn = require('connect-ensure-login').ensureLoggedIn;
+
+var passport = require('passport')
+  , LocalStrategy = require('passport-local').Strategy;
+
+passport.serializeUser(function(user, done) {
+  done(null, JSON.stringify(user));
 });
 
-var Routine = sequelize.define('routine', {
-  id: {
-    type: Sequelize.INTEGER,
-    primaryKey: true,
-    autoIncrement: true
-  },
-  name: Sequelize.STRING,
-  description: Sequelize.TEXT,
+passport.deserializeUser(function(serialized, done) {
+  done(null, JSON.parse(serialized));
 });
 
-Courier.belongsTo(Routine);
+passport.use(new LocalStrategy(
+  function(username, password, done) {
+    API.login(username, password)
+      .then((user) => {
+        done(null, user);
+      })
+      .catch((err) => {
+        done(null, false, { message: 'Invalid credentials.' });
+      });
+  }
+));
 
-Courier.sync();
-Routine.sync();
+/* Configure Express */
 
 var app = express();
 
@@ -51,24 +66,36 @@ var njk = expressNunjucks(app, {
 });
 
 app.use(express.static('web'));
-app.use('/gpx', express.static('gpx'));
-
+app.use(require('cookie-parser')());
 app.use(bodyParser.json()); // support json encoded bodies
 app.use(bodyParser.urlencoded({ extended: true })); // support encoded bodies
 
+var session = require('express-session');
+var FileStore = require('session-file-store')(session);
+app.use(session({
+  store: new FileStore({
+    path: './data',
+  }),
+  secret: 'coopcycle-bot',
+  resave: true,
+  saveUninitialized: true
+}));
+
+app.use(require('connect-flash')());
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+app.use(function(req, res, next) {
+  res.locals.user = new User(req.isAuthenticated() ? req.user : null);
+  res.locals.hasRole = function(role) {
+    return req.isAuthenticated() ? _.contains(req.user.roles, role) : false;
+  }
+  next();
+});
+
 var server = require('http').Server(app);
 var io = require('socket.io')(server);
-
-var botsConfig = require('./bots.json');
-var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
-
-var bots = {};
-botsConfig.forEach(function(botConfig) {
-  bots[botConfig.username] = {
-    username: botConfig.username,
-    gpx: botConfig.gpx
-  }
-});
 
 function startBot(courier, cb) {
 
@@ -117,7 +144,6 @@ function refreshApps() {
 
       pm2.disconnect();
 
-
       apps = _.filter(apps, function(app) {
         return app.name.startsWith('coopcycle-bot-');
       });
@@ -131,25 +157,12 @@ function refreshApps() {
 
       console.timeEnd("Listing apps");
 
-      console.log(apps);
-
       io.sockets.emit('apps', apps);
 
       setTimeout(refreshApps, 2000);
     });
   });
 }
-
-app.get('/', (req, res) => {
-  Courier.findAll({
-    include: [Routine],
-    attributes: ['id', 'username']
-  }).then((couriers) => {
-    res.render('index', {
-      couriers: couriers
-    });
-  });
-});
 
 var atLeastOne = false;
 io.on('connection', function (socket) {
@@ -159,8 +172,94 @@ io.on('connection', function (socket) {
   }
 });
 
+app.get('/', (req, res) => {
+
+  var promises = [];
+  promises.push(Db.Courier.findAll({
+    include: [Db.Routine],
+    attributes: ['id', 'username']
+  }));
+  promises.push(new Promise((resolve, reject) => {
+    if (!req.isAuthenticated()) {
+      return resolve(null);
+    }
+    Db.Courier.findOne({
+      where: {
+        username: req.user.username
+      }
+    }).then((courier) => resolve(courier));
+  }));
+
+  Promise.all(promises).then((values) => {
+    var couriers = values[0];
+    var courier = values[1];
+
+    res.render('index', {
+      couriers: couriers,
+      isConfigured: (courier && courier.routineId),
+    });
+  });
+
+});
+
+app.get('/login', (req, res) => {
+  var errors = req.flash('error');
+  var errorMessage;
+  if (errors) {
+    errorMessage = errors[0];
+  }
+  res.render('login', {
+    errorMessage: errorMessage
+  });
+});
+
+app.post('/login', passport.authenticate('local', { successRedirect: '/', failureRedirect: '/login', failureFlash: true }));
+
+app.get('/logout', function(req, res){
+  req.logout();
+  res.redirect('/');
+});
+
+app.get('/settings', ensureLoggedIn(), (req, res) => {
+  Db.Routine.findAll().then((routines) => {
+    Db.Courier.findOne({
+      where: {username: req.user.username}
+    }).then((courier) => {
+      res.render('settings', {
+        settings: {
+          routineId: courier ? courier.routineId : null
+        },
+        routines: routines,
+        messages: req.flash()
+      });
+    });
+  });
+});
+
+app.post('/settings', ensureLoggedIn(), (req, res) => {
+
+  if (req.body.routine) {
+    Db.Courier.create({
+      username: req.user.username,
+      token: req.user.token,
+      refreshToken: req.user.refresh_token,
+      routineId: req.body.routine,
+    })
+    .then((courier) => {
+      req.flash('info', 'Settings saved');
+      res.redirect('/settings');
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+  } else {
+    req.flash('error', 'No routine selected');
+    res.redirect('/settings');
+  }
+});
+
 app.post('/bots/:id/start', (req, res) => {
-  Courier.findById(req.params.id, {include: [Routine]}).then((courier) => {
+  Db.Courier.findById(req.params.id, {include: [Db.Routine]}).then((courier) => {
     startBot(courier, (err) => {
       res.setHeader('Content-Type', 'application/json');
       res.send(JSON.stringify(err ? 'KO' : 'OK'));
@@ -169,7 +268,7 @@ app.post('/bots/:id/start', (req, res) => {
 });
 
 app.post('/bots/:id/stop', (req, res) => {
-  Courier.findById(req.params.id, {include: [Routine]}).then((courier) => {
+  Db.Courier.findById(req.params.id, {include: [Db.Routine]}).then((courier) => {
     stopBot(courier, (err) => {
       res.setHeader('Content-Type', 'application/json');
       res.send(JSON.stringify(err ? 'KO' : 'OK'));
@@ -178,7 +277,7 @@ app.post('/bots/:id/stop', (req, res) => {
 });
 
 app.get('/couriers/new', (req, res) => {
-  Routine.findAll().then((routines) => {
+  Db.Routine.findAll().then((routines) => {
     res.render('courier-form', {
       routines: routines,
     });
@@ -186,7 +285,7 @@ app.get('/couriers/new', (req, res) => {
 });
 
 app.post('/couriers/new', (req, res) => {
-  Courier.create({
+  Db.Courier.create({
     username: req.body.username,
     password: req.body.password,
     routineId: req.body.routine,
@@ -198,15 +297,15 @@ app.post('/couriers/new', (req, res) => {
 });
 
 app.post('/couriers/:id/delete', (req, res) => {
-  Courier.destroy({
+  Db.Courier.destroy({
     where: {
       id: req.params.id
     }
   }).then(() => res.redirect('/'));
 });
 
-app.get('/routines', (req, res) => {
-  Routine.findAll().then((routines) => {
+app.get('/routines', ensureLoggedIn(), (req, res) => {
+  Db.Routine.findAll().then((routines) => {
     res.render('routines', {
       routines: routines,
     });
@@ -219,7 +318,7 @@ app.get('/routines/new', (req, res) => {
 
 app.post('/routines/new', upload.single('file'), (req, res) => {
 
-  Routine.create({
+  Db.Routine.create({
     name: req.body.name,
     description: req.body.description,
   })
