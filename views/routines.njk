@@ -1,0 +1,14 @@
+{% extends "layout.njk" %}
+
+{% block content %}
+<table class="table">
+  {% for routine in routines %}
+  <tr>
+    <td><a href="#">#{{ routine.id }}</a></td>
+    <td>{{ routine.name }}</td>
+    <td>{{ routine.description }}</td>
+  </tr>
+  {% endfor %}
+</table>
+<a class="btn btn-primary" href="/routines/new">Add a routine</a>
+{% endblock %}

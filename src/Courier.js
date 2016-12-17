@@ -100,6 +100,7 @@ Courier.prototype.refreshToken = function(cb) {
 }
 
 Courier.prototype.login = function(cb) {
+  console.log('Login ' + this.httpBaseURL + '/api/login_check');
   var formData  = new FormData();
   formData.append("_username", this.username);
   formData.append("_password", this.password);
@@ -109,22 +110,27 @@ Courier.prototype.login = function(cb) {
   });
 
   var self = this;
-  fetch(request).then(function(response) {
-    if (response.ok) {
-      return response.json().then(function(credentials) {
-        console.log('Login success!');
-        storeCredentials(credentials, function() {
-          self.token = credentials.token;
-          self.refresh_token = credentials.refresh_token;
-          cb(credentials.token);
+  fetch(request)
+    .then(function(response) {
+      console.log(response);
+      if (response.ok) {
+        return response.json().then(function(credentials) {
+          console.log('Login success!');
+          storeCredentials(credentials, function() {
+            self.token = credentials.token;
+            self.refresh_token = credentials.refresh_token;
+            cb(credentials.token);
+          });
         });
-      });
-    } else {
-      return response.json().then(function(json) {
-        console.log(json.message);
-      });
-    }
-  });
+      } else {
+        return response.json().then(function(json) {
+          console.log(json.message);
+        });
+      }
+    })
+    .catch(function(err) {
+      console.log(err);
+    });
 }
 
 Courier.prototype.nextPosition = function() {

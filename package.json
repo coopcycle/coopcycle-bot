@@ -16,13 +16,18 @@
   },
   "homepage": "https://github.com/coopcycle/coopcycle-bot",
   "dependencies": {
+    "body-parser": "^1.15.2",
     "express": "^4.14.0",
     "express-nunjucks": "^2.0.2",
     "form-data": "^2.1.2",
+    "multer": "^1.2.1",
     "node-fetch": "^1.6.3",
     "nunjucks": "^3.0.0",
     "pm2": "^2.1.6",
     "polyline": "^0.2.0",
+    "sequelize": "^3.27.0",
+    "socket.io": "^1.7.2",
+    "sqlite3": "^3.1.8",
     "underscore": "^1.8.3",
     "ws": "^1.1.1",
     "xml2js": "^0.4.17"

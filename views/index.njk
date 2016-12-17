@@ -1,12 +1,94 @@
 {% extends "layout.njk" %}
 
 {% block content %}
-<table class="table">
-  {% for app in apps %}
-  <tr>
-    <td>{{ app.name }}</td>
-    <td>{{ app.gpx }}</td>
+<table id="couriers" class="table">
+  <tbody>
+  {% for courier in couriers %}
+  <tr data-courier-id="{{ courier.id }}" class="warning">
+    <td><a href="#">#{{ courier.id }}</a></td>
+    <td>{{ courier.username }}</td>
+    <td>{{ courier.routine.name }}</td>
+    <td><strong><span class="status"></span></strong></td>
+    <td><button type="button" class="btn btn-xs btn-success start-stop" data-status="">Start bot</button></td>
+    <td>
+      <form method="post" action="/couriers/{{ courier.id }}/delete">
+        <button type="submit" class="pull-right btn btn-xs btn-danger">Delete bot</button>
+      </form>
+    </td>
   </tr>
   {% endfor %}
+  </tbody>
 </table>
+<a class="btn btn-primary" href="/couriers/new">Add a courier bot</a>
+{% endblock %}
+
+{% block scripts %}
+<script src="/socket.io/socket.io.js"></script>
+<script>
+
+  var couriers = {{ couriers | dump | safe }};
+
+  var hostname = window.location.hostname;
+  if (window.location.port) {
+    hostname += (':' + window.location.port);
+  }
+
+  var socket = io.connect('//' + hostname);
+
+  $('#couriers button.start-stop').on('click', function(e) {
+    var status = $(e.currentTarget).data('status');
+    var id = $(this).parents('tr').data('courier-id');
+    if (status === 'online') {
+      $.post('/bots/' + id + '/stop')
+        .then(function(response) {
+          console.log(response);
+        });
+    }
+    if (!status || status === 'stopped') {
+      $.post('/bots/' + id + '/start')
+        .then(function(response) {
+          console.log(response);
+        });
+    }
+  });
+
+  socket.on('apps', function (apps) {
+
+    $.each(couriers, function(key, courier) {
+
+      var $row = $('#couriers tr[data-courier-id="' + courier.id + '"]');
+
+      var app = _.find(apps, function(app) {
+        return app.username === courier.username;
+      });
+
+      var status = app ? app.status : null;
+
+      $startStopBtn = $row.find('.start-stop');
+      $statusEl = $row.find('.status');
+
+      $startStopBtn.data('status', status);
+
+      $startStopBtn
+        .removeClass('btn-warning')
+        .removeClass('btn-success');
+
+      $row
+        .removeClass('danger')
+        .removeClass('success');
+
+      if (status === 'online') {
+        $startStopBtn.addClass('btn-warning').text('Stop bot');
+        $row.removeClass('warning').addClass('success');
+      }
+      if (status === 'stopped') {
+        $startStopBtn.addClass('btn-success').text('Start bot');
+        $row.removeClass('warning').addClass('danger');
+      }
+
+      $statusEl.text(status);
+    });
+  });
+
+</script>
 {% endblock %}

@@ -9,15 +9,25 @@
     <nav class="navbar navbar-default">
       <div class="container">
         <div class="navbar-header">
-          <a class="navbar-brand" href="#">
+          <a class="navbar-brand" href="/">
             CoopCycle Bot
           </a>
         </div>
+        <ul class="nav navbar-nav">
+          <li>
+            <a href="/routines">Routines</a>
+          </li>
+        </ul>
       </div>
     </nav>
     <div class="container">
     {% block content %}
     {% endblock %}
     </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+    {% block scripts %}
+    {% endblock %}
   </body>
 </html>
