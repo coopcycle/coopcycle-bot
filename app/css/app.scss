@@ -1,2 +1,7 @@
 $bootstrap-sass-asset-helper: true;
+
 @import "~bootstrap-sass/assets/stylesheets/bootstrap";
+
+body {
+    font-family: 'Space Mono', Helvetica, Arial, sans-serif;
+}
