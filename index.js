@@ -113,10 +113,12 @@ function startBot(courier, cb) {
   pm2.connect(function(err) {
     if (err) return cb(err);
 
+    var watch = process.env.NODE_ENV === 'production' ? false : ['bot.js', './src/*.js'];
+
     pm2.start({
       name: 'coopcycle-bot-' + courier.username,
       script: 'bot.js',
-      watch: ['bot.js', './src/*.js'],
+      watch: watch,
       args: args,
     }, function(err, apps) {
       pm2.disconnect();
