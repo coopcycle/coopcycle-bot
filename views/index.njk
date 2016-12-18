@@ -2,11 +2,22 @@
 
 {% block content %}
 
-{% if not hasRole('ROLE_ADMIN') and user.isAuthenticated and not isConfigured %}
+{% if not user.isAuthenticated %}
+  <div class="alert alert-info">Welcome to the CoopCycle bots GUI. <a href="/login">Login</a> with your CoopCycle account to get started.</div>
+{% endif %}
+
+{% if user.isAuthenticated and not hasRole('ROLE_ADMIN') and not isConfigured %}
   <div class="alert alert-warning">Bot not configured yet. <a href="/settings">Let's go.</a></div>
 {% endif %}
 
 <table id="couriers" class="table">
+  <thead>
+    <th></th>
+    <th>Username</th>
+    <th>Routine</th>
+    <th>Status</th>
+    <th></th>
+  </thead>
   <tbody>
   {% for courier in couriers %}
   <tr data-courier-id="{{ courier.id }}" class="warning">
@@ -14,7 +25,7 @@
     <td>{{ courier.username }}</td>
     <td>{{ courier.routine.name }}</td>
     <td><strong><span class="status"></span></strong></td>
-    <td><button type="button" class="btn btn-xs btn-success start-stop" data-status="">Start bot</button></td>
+    <td><button type="button" class="pull-right btn btn-xs btn-success start-stop" data-status="">Start bot</button></td>
     {% if hasRole('ROLE_ADMIN') %}
     <td>
       <form method="post" action="/couriers/{{ courier.id }}/delete">
