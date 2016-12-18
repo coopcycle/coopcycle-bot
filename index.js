@@ -304,7 +304,7 @@ app.post('/couriers/:id/delete', (req, res) => {
   }).then(() => res.redirect('/'));
 });
 
-app.get('/routines', ensureLoggedIn(), (req, res) => {
+app.get('/routines', (req, res) => {
   Db.Routine.findAll().then((routines) => {
     res.render('routines', {
       routines: routines,
@@ -312,11 +312,11 @@ app.get('/routines', ensureLoggedIn(), (req, res) => {
   });
 });
 
-app.get('/routines/new', (req, res) => {
+app.get('/routines/new', ensureLoggedIn(), (req, res) => {
   res.render('routine-form');
 });
 
-app.post('/routines/new', upload.single('file'), (req, res) => {
+app.post('/routines/new', [ensureLoggedIn(), upload.single('file')], (req, res) => {
 
   Db.Routine.create({
     name: req.body.name,

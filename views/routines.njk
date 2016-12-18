@@ -10,5 +10,7 @@
   </tr>
   {% endfor %}
 </table>
+{% if user.isAuthenticated %}
 <a class="btn btn-primary" href="/routines/new">Add a routine</a>
+{% endif %}
 {% endblock %}
