@@ -239,21 +239,31 @@ app.get('/settings', ensureLoggedIn(), (req, res) => {
 });
 
 app.post('/settings', ensureLoggedIn(), (req, res) => {
-
   if (req.body.routine) {
-    Db.Courier.create({
-      username: req.user.username,
-      token: req.user.token,
-      refreshToken: req.user.refresh_token,
-      routineId: req.body.routine,
+    Db.Courier.findOne({
+      where: {username: req.user.username}
     })
     .then((courier) => {
-      req.flash('info', 'Settings saved');
-      res.redirect('/settings');
-    })
-    .catch((err) => {
-      console.log(err);
-    });
+      if (courier) {
+        courier.set('routineId', req.body.routine);
+        return courier.save();
+      }
+
+      return Db.Courier.create({
+        username: req.user.username,
+        token: req.user.token,
+        refreshToken: req.user.refresh_token,
+        routineId: req.body.routine,
+      });
+
+      })
+      .then((courier) => {
+        req.flash('info', 'Settings saved');
+        res.redirect('/settings');
+      })
+      .catch((err) => {
+        console.log(err);
+      });
   } else {
     req.flash('error', 'No routine selected');
     res.redirect('/settings');
