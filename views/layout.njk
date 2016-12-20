@@ -21,7 +21,8 @@
         </ul>
         <ul class="nav navbar-nav navbar-right">
           {% if user.isAuthenticated %}
-          <li><a href="/settings">{{ user.username }}</a></li>
+          <li><a>Connected as {{ user.username }}</a></li>
+          <li class="active"><a href="/settings">Settings</a></li>
           <li><a href="/logout">Logout</a></li>
           {% else %}
           <li><a href="/login">Login</a></li>

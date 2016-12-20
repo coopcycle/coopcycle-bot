@@ -270,7 +270,7 @@ app.post('/settings', ensureLoggedIn(), (req, res) => {
   }
 });
 
-app.post('/bots/:id/start', (req, res) => {
+app.post('/bots/:id/start', ensureLoggedIn(), (req, res) => {
   Db.Courier.findById(req.params.id, {include: [Db.Routine]}).then((courier) => {
     startBot(courier, (err) => {
       res.setHeader('Content-Type', 'application/json');
@@ -279,7 +279,7 @@ app.post('/bots/:id/start', (req, res) => {
   });
 });
 
-app.post('/bots/:id/stop', (req, res) => {
+app.post('/bots/:id/stop', ensureLoggedIn(), (req, res) => {
   Db.Courier.findById(req.params.id, {include: [Db.Routine]}).then((courier) => {
     stopBot(courier, (err) => {
       res.setHeader('Content-Type', 'application/json');
@@ -288,7 +288,7 @@ app.post('/bots/:id/stop', (req, res) => {
   });
 });
 
-app.get('/couriers/new', (req, res) => {
+app.get('/couriers/new', ensureLoggedIn(), (req, res) => {
   Db.Routine.findAll().then((routines) => {
     res.render('courier-form', {
       routines: routines,
@@ -296,7 +296,7 @@ app.get('/couriers/new', (req, res) => {
   });
 });
 
-app.post('/couriers/new', (req, res) => {
+app.post('/couriers/new', ensureLoggedIn(), (req, res) => {
   Db.Courier.create({
     username: req.body.username,
     password: req.body.password,
@@ -308,7 +308,7 @@ app.post('/couriers/new', (req, res) => {
   });
 });
 
-app.post('/couriers/:id/delete', (req, res) => {
+app.post('/couriers/:id/delete', ensureLoggedIn(), (req, res) => {
   Db.Courier.destroy({
     where: {
       id: req.params.id
