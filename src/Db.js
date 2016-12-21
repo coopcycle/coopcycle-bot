@@ -26,6 +26,18 @@ module.exports = function(sequelize) {
     },
   });
 
+  Db.Customer = sequelize.define('customer', {
+    id: {
+      type: Sequelize.INTEGER,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    username: Sequelize.STRING,
+    token: Sequelize.STRING,
+    refreshToken: Sequelize.STRING,
+    frequency: Sequelize.STRING,
+  });
+
   Db.Routine = sequelize.define('routine', {
     id: {
       type: Sequelize.INTEGER,

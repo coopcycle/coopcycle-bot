@@ -16,6 +16,8 @@
     <label for="refresh-token">Refresh token</label>
     <input type="password" class="form-control" id="refresh-token" value="{{ user.refreshToken }}" disabled>
   </div>
+
+  {% if hasRole('ROLE_COURIER') %}
   <div class="form-group">
     <label for="password">Routine</label>
     <select name="routine" class="form-control">
@@ -30,6 +32,24 @@
     </select>
     <p class="help-block">This is the routine that your bot will use.</p>
   </div>
+  {% endif %}
+
+  {% if hasRole('ROLE_CUSTOMER') %}
+  <div class="form-group">
+    <label for="password">Frequency</label>
+    <select name="frequency" class="form-control">
+      <option value="">Select a frequency</option>
+      {% for key, frequency in frequencies %}
+        {% set selected = '' %}
+        {% if key == settings.frequency %}
+          {% set selected = 'selected="selected"' %}
+        {% endif %}
+        <option value="{{ key }}" {{ selected }}>{{ frequency }}</option>
+      {% endfor %}
+    </select>
+    <p class="help-block">This is the frequency of ordering.</p>
+  </div>
+  {% endif %}
   <button type="submit" class="btn btn-primary">Submit</button>
 </form>
 {% endblock %}

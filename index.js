@@ -5,6 +5,8 @@ var bodyParser = require('body-parser');
 var fs = require('fs');
 var express = require('express');
 var Promise = require('promise');
+var fetch = require('node-fetch');
+var schedule = require('node-schedule');
 
 var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
 
@@ -12,7 +14,7 @@ var multer = require('multer');
 var storage = multer.memoryStorage();
 var upload = multer({ storage: storage });
 
-var API = require('./src/API')(baseURL);
+var API = require('./src/API');
 var User = require('./src/User');
 
 var Sequelize = require('sequelize');
@@ -26,6 +28,7 @@ var sequelize = new Sequelize('database', 'username', 'password', {
 var Db = require('./src/Db')(sequelize);
 
 Db.Courier.sync();
+Db.Customer.sync();
 Db.Routine.sync();
 
 /* Configure Passport */
@@ -45,7 +48,7 @@ passport.deserializeUser(function(serialized, done) {
 
 passport.use(new LocalStrategy(
   function(username, password, done) {
-    API.login(username, password)
+    API.login(baseURL, username, password)
       .then((user) => {
         done(null, user);
       })
@@ -86,10 +89,15 @@ app.use(require('connect-flash')());
 app.use(passport.initialize());
 app.use(passport.session());
 
+function hasRole(req, role) {
+  return req.isAuthenticated() ? _.contains(req.user.roles, role) : false;
+}
+
 app.use(function(req, res, next) {
   res.locals.user = new User(req.isAuthenticated() ? req.user : null);
   res.locals.hasRole = function(role) {
-    return req.isAuthenticated() ? _.contains(req.user.roles, role) : false;
+    // return req.isAuthenticated() ? _.contains(req.user.roles, role) : false;
+    return hasRole(req, role);
   }
   next();
 });
@@ -166,6 +174,83 @@ function refreshApps() {
   });
 }
 
+var FREQUENCIES = {
+  '*/2 * * * *': 'Every 2 minutes',
+  '*/5 * * * *': 'Every 5 minutes',
+  '*/10 * * * *': 'Every 10 minutes',
+  '*/30 * * * *': 'Every 30 minutes',
+}
+
+function runCustomerBots(frequency) {
+
+  console.log('Cron job running ' + frequency);
+
+  Db.Customer.findAll({
+    where: {
+      frequency: frequency,
+    }
+  }).then((customers) => {
+    customers.forEach((customer) => {
+
+      var credentials = {
+        token: customer.token,
+        refreshToken: customer.refreshToken
+      }
+      var client = API.createClient(baseURL, customer);
+
+      client.request('GET', '/api/me')
+        .then((data) => {
+
+          var deliveryAddress = data.deliveryAddresses[0]
+          var uri = '/api/restaurants?coordinate=' + deliveryAddress.geo.latitude
+            + ',' + deliveryAddress.geo.longitude+'&distance=3000';
+
+          return client.request('GET', uri)
+            .then((data) => {
+
+              var restaurants = data['hydra:member'];
+              var restaurant = _.first(_.shuffle(restaurants));
+
+              var numberOfProducts = _.random(1, 5);
+              var products = [];
+              if (restaurant.products.length > 0) {
+                while (products.length < numberOfProducts) {
+                  products.push(_.first(_.shuffle(restaurant.products)));
+                }
+              }
+
+              var cart = {
+                restaurant: restaurant['@id'],
+                deliveryAddress: '/api/delivery_addresses/' + deliveryAddress.id,
+                orderedItem: []
+              }
+              var groupedItems = _.countBy(products, (product) => product['@id']);
+              cart.orderedItem = _.map(groupedItems, (quantity, product) => {
+                return {
+                  quantity: quantity,
+                  product: product
+                }
+              });
+
+              console.log(cart);
+
+              return client.request('POST', '/api/orders', cart);
+            })
+            .then((data) => {
+              console.log('Order created!');
+            });
+        })
+
+
+    });
+  })
+}
+
+_.keys(FREQUENCIES).forEach((frequency) => {
+  console.log('Scheduling function for frequency ' + frequency)
+  schedule.scheduleJob(frequency, () => runCustomerBots(frequency));
+})
+
 var atLeastOne = false;
 io.on('connection', function (socket) {
   if (!atLeastOne) {
@@ -175,6 +260,8 @@ io.on('connection', function (socket) {
 });
 
 app.get('/', (req, res) => {
+
+  console.log(req.user);
 
   var promises = [];
   promises.push(Db.Courier.findAll({
@@ -223,51 +310,115 @@ app.get('/logout', function(req, res){
 });
 
 app.get('/settings', ensureLoggedIn(), (req, res) => {
-  Db.Routine.findAll().then((routines) => {
-    Db.Courier.findOne({
-      where: {username: req.user.username}
-    }).then((courier) => {
-      res.render('settings', {
-        settings: {
-          routineId: courier ? courier.routineId : null
-        },
-        routines: routines,
-        messages: req.flash()
+
+  if (hasRole(req, 'ROLE_COURIER')) {
+    Db.Routine.findAll().then((routines) => {
+      Db.Courier.findOne({
+        where: {username: req.user.username}
+      }).then((courier) => {
+        res.render('settings', {
+          settings: {
+            routineId: courier ? courier.routineId : null
+          },
+          routines: routines,
+          messages: req.flash()
+        });
       });
     });
-  });
+  }
+
+  if (hasRole(req, 'ROLE_CUSTOMER')) {
+    Db.Customer.findOne({
+        where: {username: req.user.username}
+      }).then((customer) => {
+        res.render('settings', {
+          settings: {
+            frequency: customer ? customer.frequency : null
+          },
+          frequencies: FREQUENCIES,
+          messages: req.flash()
+        });
+      });
+  }
+
+  if (!hasRole(req, 'ROLE_COURIER') && !hasRole(req, 'ROLE_CUSTOMER')) {
+    res.render('settings', {
+      settings: {
+        // routineId: courier ? courier.routineId : null
+      },
+      // routines: routines,
+      messages: req.flash()
+    });
+  }
+
 });
 
 app.post('/settings', ensureLoggedIn(), (req, res) => {
-  if (req.body.routine) {
-    Db.Courier.findOne({
-      where: {username: req.user.username}
-    })
-    .then((courier) => {
-      if (courier) {
-        courier.set('routineId', req.body.routine);
-        return courier.save();
-      }
 
-      return Db.Courier.create({
-        username: req.user.username,
-        token: req.user.token,
-        refreshToken: req.user.refresh_token,
-        routineId: req.body.routine,
-      });
-
+  if (hasRole(req, 'ROLE_COURIER')) {
+    if (req.body.routine) {
+      Db.Courier.findOne({
+        where: {username: req.user.username}
       })
       .then((courier) => {
-        req.flash('info', 'Settings saved');
-        res.redirect('/settings');
-      })
-      .catch((err) => {
-        console.log(err);
-      });
-  } else {
-    req.flash('error', 'No routine selected');
-    res.redirect('/settings');
+        if (courier) {
+          courier.set('routineId', req.body.routine);
+          return courier.save();
+        }
+
+        return Db.Courier.create({
+          username: req.user.username,
+          token: req.user.token,
+          refreshToken: req.user.refresh_token,
+          routineId: req.body.routine,
+        });
+
+        })
+        .then((courier) => {
+          req.flash('info', 'Settings saved');
+          res.redirect('/settings');
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    } else {
+      req.flash('error', 'No routine selected');
+      res.redirect('/settings');
+    }
   }
+
+  if (hasRole(req, 'ROLE_CUSTOMER')) {
+    if (req.body.frequency) {
+      Db.Customer.findOne({
+        where: {username: req.user.username}
+      })
+      .then((customer) => {
+        if (customer) {
+          customer.set('frequency', req.body.frequency);
+          return customer.save();
+        }
+
+        return Db.Customer.create({
+          username: req.user.username,
+          token: req.user.token,
+          refreshToken: req.user.refresh_token,
+          frequency: req.body.frequency,
+        });
+
+        })
+        .then((customer) => {
+          req.flash('info', 'Settings saved');
+          res.redirect('/settings');
+        })
+        .catch((err) => {
+          console.log(err);
+        });
+    } else {
+      req.flash('error', 'No frequency selected');
+      res.redirect('/settings');
+    }
+  }
+
 });
 
 app.post('/bots/:id/start', ensureLoggedIn(), (req, res) => {
