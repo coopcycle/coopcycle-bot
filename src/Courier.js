@@ -1,25 +1,23 @@
 var fs = require('fs');
 var WebSocket = require('ws');
 var FormData = require('form-data');
-var fetch = require('node-fetch');
-var Request = require('node-fetch').Request;
-var Headers = require('node-fetch').Headers;
 var _ = require('underscore');
+var API = require('./API');
 var DirectionsAPI = require('./DirectionsAPI');
 var Promise = require('promise');
 
 var winston = require('winston');
 winston.level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
 
-function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI, db) {
+function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI) {
 
   this.model = model;
+  this.client = API.createClient(httpBaseURL, model);
 
   this.route = route;
   this.httpBaseURL = httpBaseURL;
   this.wsBaseURL = wsBaseURL;
   this.directionsAPI = directionsAPI;
-  this.db = db;
 
   this.timeout = undefined;
   this.ws = undefined;
@@ -30,101 +28,24 @@ function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI, db) {
   var lastPosition = this.model.get('lastPosition');
 
   if (lastPosition) {
+    this.info('Starting at last position', lastPosition);
+    this.currentPosition = lastPosition;
+
     var currentIndex = _.findIndex(route, (point) => {
       return point.latitude === lastPosition.latitude && point.longitude === lastPosition.longitude
     });
     if (currentIndex) {
-      console.log('Starting at last position', lastPosition);
       this.currentIndex = currentIndex;
-      this.currentPosition = lastPosition;
     }
   }
 }
 
-Courier.prototype.createAuthorizedRequest = function(method, uri, data) {
-  var headers = new Headers();
-  headers.append("Authorization", "Bearer " + this.model.get('token'));
-  headers.append("Content-Type", "application/json");
-
-  var options = {
-    method: method,
-    headers: headers,
-  }
-  if (data) {
-    options.body = JSON.stringify(data)
-  }
-
-  return new Request(this.httpBaseURL + uri, options);
+Courier.prototype.debug = function(msg, data) {
+  winston.debug('[' + this.model.username + '] ' + msg, data);
 }
 
-Courier.prototype.getToken = function(cb) {
-
-  if (!this.model.get('token')) {
-    return this.login().then((credentials) => {
-      this.model.set('token', credentials.token);
-      this.model.set('refreshToken', credentials.refresh_token);
-      this.model.save().then(() => {
-        cb(this.model.get('token'));
-      });
-    });
-  }
-
-  cb(this.model.get('token'));
-}
-
-Courier.prototype.refreshToken = function(cb) {
-  var formData  = new FormData();
-  formData.append("refresh_token", this.model.get('refreshToken'));
-  var request = new fetch.Request(this.httpBaseURL + '/api/token/refresh', {
-    method: 'POST',
-    body: formData
-  });
-
-  var self = this;
-  fetch(request)
-    .then(function(response) {
-      if (response.ok) {
-        return response.json().then(function(credentials) {
-          console.log('Token refreshed!');
-          self.model.set('token', credentials.token);
-          self.model.set('refreshToken', credentials.refresh_token);
-          self.model.save().then(() => {
-            cb(self.model.get('token'));
-          });
-        });
-      } else {
-        return response.json().then(function(json) {
-          console.log(json.message);
-        });
-      }
-    });
-}
-
-Courier.prototype.login = function() {
-  console.log('Login ' + this.httpBaseURL + '/api/login_check');
-
-  var formData  = new FormData();
-  formData.append("_username", this.model.get('username'));
-  formData.append("_password", this.model.get('password'));
-  var request = new fetch.Request(this.httpBaseURL + '/api/login_check', {
-    method: 'POST',
-    body: formData
-  });
-
-  var self = this;
-  return fetch(request)
-    .then(function(response) {
-      if (response.ok) {
-        return response.json();
-      } else {
-        return response.json().then(function(json) {
-          console.log(json.message);
-        });
-      }
-    })
-    .catch(function(err) {
-      console.log(err);
-    });
+Courier.prototype.info = function(msg, data) {
+  winston.info('[' + this.model.username + '] ' + msg, data);
 }
 
 Courier.prototype.randomPosition = function() {
@@ -149,109 +70,58 @@ Courier.prototype.nextPosition = function() {
 Courier.prototype.updateCoords = function() {
   if (this.ws.readyState === WebSocket.OPEN) {
     this.nextPosition();
-    winston.debug('Sendind position', this.currentPosition);
-    this.ws.send(JSON.stringify({
-      type: "updateCoordinates",
-      coordinates: this.currentPosition
-    }));
+    this.sendCurrentPosition();
   }
   this.timeout = setTimeout(this.updateCoords.bind(this), 2000);
 }
 
-Courier.prototype.checkStatus = function(cb) {
-  var request = this.createAuthorizedRequest('GET', '/api/me/status');
-  fetch(request)
-    .then(function(response) {
-      return response.json().then(function(data) {
-        cb(data);
-      })
-    });
-}
-
 Courier.prototype.connect = function() {
-  var self = this;
-  this.getToken(function(token) {
+  this.info('Checking status...', this.currentPosition);
+  this.client.request('GET', '/api/me/status').then((data) => {
 
-    console.log('Connecting to ws server');
+    this.info('Status = ' + data.status);
 
-    self.ws = new WebSocket(self.wsBaseURL + '/realtime', '', {
+    this.info('Connecting to WS server');
+    this.ws = new WebSocket(this.wsBaseURL + '/realtime', '', {
       headers: {
-        Authorization: "Bearer " + token
+        Authorization: "Bearer " + this.model.get('token')
       }
     });
 
-    self.ws.onopen = function() {
-      console.log('User ' + self.model.get('username') + ' connected to server!');
-      clearTimeout(self.timeout);
-      self.updateCoords();
+    this.ws.onopen = () => {
 
-      console.log('Checking status...');
-      self.checkStatus(function(data) {
-        if (data.status === 'DELIVERING') {
+      this.info('Connected to WS server!');
 
-          console.log('Resuming delivery of order', data.order);
-          clearTimeout(self.timeout);
+      clearTimeout(this.timeout);
 
-          if (data.order.status === 'ACCEPTED') {
-            console.log('Going to restaurant to pick order');
-            self.getDirectionsAndGoto(data.order.restaurant, function() {
-              console.log('Arrived at restaurant!');
-              self.pickOrder(data.order);
-            });
-          }
-
-          if (data.order.status === 'PICKED') {
-            console.log('Going to delivery address to deliver order');
-            self.getDirectionsAndGoto(data.order.deliveryAddress, function() {
-              console.log('Arrived at delivery address!');
-              self.deliverOrder(data.order);
-            });
-          }
-        }
-      });
-    }
-
-    self.ws.onmessage = self.onMessage.bind(self);
-
-    self.ws.onclose = function(e) {
-      console.log('Connection closed!');
-      clearTimeout(self.timeout);
-      setTimeout(self.connect.bind(self), 1000);
-    }
-
-    self.ws.onerror = function(err) {
-      console.log('Connection error!');
-      self.ws.onclose = function () {}; // Disable onclose handler
-      clearTimeout(self.timeout);
-      if (err.message === 'unexpected server response (401)') {
-        console.log('Token seems to be expired, refreshing...');
-        self.refreshToken(self.connect.bind(self));
+      if (data.status === 'DELIVERING') {
+        this.info('Resuming delivery of order', data.order);
+        this.resumeOrder(data.order);
       } else {
-        console.log('Connection error! Will retry in 5s');
-        setTimeout(self.connect.bind(self), 5000);
+        this.info('Resuming routine');
+        this.updateCoords();
       }
+    }
+
+    this.ws.onmessage = this.onMessage.bind(this);
+
+    this.ws.onclose = (e) => {
+      this.info('Connection closed!');
+      clearTimeout(this.timeout);
+      setTimeout(this.connect.bind(this), 1000);
+    }
+
+    this.ws.onerror = (e) => {
+      this.info('Connection error!', e.message);
+      this.ws.onclose = function () {}; // Disable onclose handler
+      clearTimeout(this.timeout);
+      this.info('Will retry connecting in 5s');
+      setTimeout(this.connect.bind(this), 5000);
     }
   });
 }
 
-Courier.prototype.getDirectionsAndGoto = function(destination, cb) {
-  var self = this;
-  this.directionsAPI.getDirections({
-    origin: this.currentPosition,
-    destination: destination
-  })
-  .then(function(data) {
-    var route = DirectionsAPI.toPolylineCoordinates(data);
-    console.log('Going to ' + JSON.stringify(destination));
-    self.goto(route, function() {
-      console.log('Arrived at ' + JSON.stringify(destination));
-      cb();
-    });
-  });
-}
-
-Courier.prototype.goto = function(route, cb) {
-
+function _goto(route, cb) {
   var position = route.shift();
 
   if (!position) {
@@ -260,96 +130,111 @@ Courier.prototype.goto = function(route, cb) {
   }
 
   this.currentPosition = position;
+  this.sendCurrentPosition();
+  this.timeout = setTimeout(_goto.bind(this, route, cb), 4000);
+}
 
-  this.ws.send(JSON.stringify({
-    type: "updateCoordinates",
-    coordinates: this.currentPosition
-  }));
+Courier.prototype.goto = function(destination, cb) {
+  this.directionsAPI.getDirections({
+    origin: this.currentPosition,
+    destination: destination
+  })
+  .then((data) => {
+    var route = DirectionsAPI.toPolylineCoordinates(data);
+    this.info('Going to ' + JSON.stringify(destination));
+    _goto.call(this, route, () => {
+      this.info('Arrived at ' + JSON.stringify(destination));
+      cb();
+    });
+  });
+}
 
-  this.timeout = setTimeout(this.goto.bind(this, route, cb), 4000);
+Courier.prototype.resumeOrder = function(order) {
+  if (order.status === 'ACCEPTED') {
+    this.info('Going to restaurant to pick order');
+    this.goto(order.restaurant, () => {
+      this.info('Arrived at restaurant!');
+      this.pickOrder(order);
+    });
+  }
+  if (order.status === 'PICKED') {
+    this.info('Going to delivery address to deliver order');
+    this.goto(order.deliveryAddress, () => {
+      this.info('Arrived at delivery address!');
+      this.deliverOrder(order);
+    });
+  }
 }
 
 Courier.prototype.acceptOrder = function(order) {
-
-  console.log('Accepting order #' + order.id);
-  var request = this.createAuthorizedRequest('PUT', '/api/orders/' + order.id + '/accept', {});
-
-  var self = this;
-  fetch(request)
-    .then(function(response) {
-      if (!response.ok) {
-        throw new Error('CANNOT ACCEPT ORDER #' + order.id);
-      }
-      console.log('Order #' + order.id + ' accepted!');
-      return response.json();
-    })
-    .then(function() {
-      console.log('Going to restaurant to pick order');
-      self.getDirectionsAndGoto(order.restaurant, function() {
-        console.log('Arrived to restaurant!');
-        self.pickOrder(order);
+  this.info('Accepting order #' + order.id);
+  this.client.request('PUT', '/api/orders/' + order.id + '/accept', {})
+    .then(() => {
+      this.info('Order #' + order.id + ' accepted!');
+      this.info('Going to restaurant to pick order');
+      this.goto(order.restaurant, () => {
+        this.info('Arrived to restaurant!');
+        this.pickOrder(order);
       });
+    })
+    .catch((e) => {
+      throw new Error('CANNOT ACCEPT ORDER #' + order.id, e);
     });
-
 }
 
 Courier.prototype.pickOrder = function(order) {
-
-  console.log('Picking order #' + order.id);
-  var request = this.createAuthorizedRequest('PUT', '/api/orders/' + order.id + '/pick', {});
-
-  var self = this;
-  fetch(request)
-    .then(function(response) {
-      if (!response.ok) {
-        throw new Error('CANNOT PICK ORDER #' + order.id);
-      }
-      console.log('Order #' + order.id + ' picked!');
-      return response.json();
-    })
-    .then(function() {
-      console.log('Going to delivery address to deliver order');
-      self.getDirectionsAndGoto(order.deliveryAddress, function() {
-        console.log('Arrived at delivery address!');
-        self.deliverOrder(order);
+  this.info('Picking order #' + order.id);
+  this.client.request('PUT', '/api/orders/' + order.id + '/pick', {})
+    .then(() => {
+      this.info('Order #' + order.id + ' picked!');
+      this.info('Going to delivery address to deliver order');
+      this.goto(order.deliveryAddress, () => {
+        this.info('Arrived at delivery address!');
+        this.deliverOrder(order);
       });
+    })
+    .catch((e) => {
+      throw new Error('CANNOT PICK ORDER #' + order.id, e);
     });
 }
 
 Courier.prototype.deliverOrder = function(order) {
-
-  console.log('Delivering order #' + order.id);
-  var request = this.createAuthorizedRequest('PUT', '/api/orders/' + order.id + '/deliver', {});
-
-  var self = this;
-  fetch(request)
-    .then(function(response) {
-      if (!response.ok) {
-        throw new Error('CANNOT DELIVER ORDER #' + order.id);
-      }
-      console.log('Order #' + order.id + ' delivered!');
-      return response.json();
-    })
-    .then(function() {
-      console.log('Order delivered, going back to routine');
-      self.currentIndex = self.randomPosition();
-      var randomPosition = self.route[self.currentIndex];
-      self.getDirectionsAndGoto(randomPosition, function() {
-        console.log('Restarting routine');
-        clearTimeout(self.timeout);
-        self.updateCoords();
+  this.info('Delivering order #' + order.id);
+  this.client.request('PUT', '/api/orders/' + order.id + '/deliver', {})
+    .then(() => {
+      this.info('Order #' + order.id + ' delivered!');
+      this.info('Order delivered, going back to routine');
+      this.currentIndex = this.randomPosition();
+      var randomPosition = this.route[this.currentIndex];
+      this.goto(randomPosition, () => {
+        this.info('Restarting routine');
+        clearTimeout(this.timeout);
+        this.updateCoords();
       });
+    })
+    .catch((e) => {
+      throw new Error('CANNOT DELIVER ORDER #' + order.id, e);
     });
 }
 
 Courier.prototype.onMessage = function(e) {
 
   var message = JSON.parse(e.data);
-  console.log('Message received!', message);
+  this.info('Message received!', message);
 
   if (message.type === 'order') {
     clearTimeout(this.timeout);
     setTimeout(this.acceptOrder.bind(this, message.order), 5000);
+  }
+}
+
+Courier.prototype.sendCurrentPosition = function() {
+  if (this.ws.readyState === WebSocket.OPEN) {
+    this.debug('Sendind position', this.currentPosition);
+    this.ws.send(JSON.stringify({
+      type: "updateCoordinates",
+      coordinates: this.currentPosition
+    }));
   }
 }
 

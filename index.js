@@ -107,7 +107,6 @@ var server = require('http').Server(app);
 var io = require('socket.io')(server);
 
 function refreshApps() {
-  console.time("Listing apps");
   pm2.connect(function(err) {
     if (err) throw err;
     pm2.list(function(err, apps) {
@@ -124,8 +123,6 @@ function refreshApps() {
           status: app.pm2_env.status
         };
       });
-
-      console.timeEnd("Listing apps");
 
       io.sockets.emit('apps', apps);
 

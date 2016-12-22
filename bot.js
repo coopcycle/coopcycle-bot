@@ -51,8 +51,7 @@ Db.Courier.findOne({
       points,
       httpBaseURL,
       wsBaseURL,
-      directionsAPI,
-      Db
+      directionsAPI
     );
     courier.connect();
   });
