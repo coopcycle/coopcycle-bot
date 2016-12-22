@@ -329,8 +329,13 @@ Courier.prototype.deliverOrder = function(order) {
     })
     .then(function() {
       console.log('Order delivered, going back to routine');
-      var randomPosition = self.randomPosition();
-      self.getDirectionsAndGoto(randomPosition);
+      self.currentIndex = self.randomPosition();
+      var randomPosition = self.route[self.currentIndex];
+      self.getDirectionsAndGoto(randomPosition, function() {
+        console.log('Restarting routine');
+        clearTimeout(self.timeout);
+        self.updateCoords();
+      });
     });
 }
 
