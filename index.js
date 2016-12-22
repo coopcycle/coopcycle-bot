@@ -198,9 +198,9 @@ function runCustomerBots(frequency) {
             })
             .then((data) => {
               console.log('Order created!');
+              io.sockets.emit('order', data);
             });
         })
-
 
     });
   })
@@ -221,12 +221,13 @@ io.on('connection', function (socket) {
 
 app.get('/', (req, res) => {
 
-  console.log(req.user);
-
   var promises = [];
   promises.push(Db.Courier.findAll({
     include: [Db.Routine],
     attributes: ['id', 'username']
+  }));
+  promises.push(Db.Customer.findAll({
+    attributes: ['id', 'username', 'frequency']
   }));
   promises.push(new Promise((resolve, reject) => {
     if (!req.isAuthenticated()) {
@@ -238,13 +239,26 @@ app.get('/', (req, res) => {
       }
     }).then((courier) => resolve(courier));
   }));
+  promises.push(new Promise((resolve, reject) => {
+    if (!req.isAuthenticated()) {
+      return resolve(null);
+    }
+    Db.Customer.findOne({
+      where: {
+        username: req.user.username
+      }
+    }).then((customer) => resolve(customer));
+  }));
 
   Promise.all(promises).then((values) => {
     var couriers = values[0];
-    var courier = values[1];
+    var customers = values[1];
+    var courier = values[2];
+    var customer = values[3];
 
     res.render('index', {
       couriers: couriers,
+      customers: customers,
       isConfigured: (courier && courier.routineId),
     });
   });
