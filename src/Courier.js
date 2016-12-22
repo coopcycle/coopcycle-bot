@@ -8,6 +8,9 @@ var _ = require('underscore');
 var DirectionsAPI = require('./DirectionsAPI');
 var Promise = require('promise');
 
+var winston = require('winston');
+winston.level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
+
 function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI, db) {
 
   this.model = model;
@@ -146,7 +149,7 @@ Courier.prototype.nextPosition = function() {
 Courier.prototype.updateCoords = function() {
   if (this.ws.readyState === WebSocket.OPEN) {
     this.nextPosition();
-    console.log('Sendind position', this.currentPosition);
+    winston.debug('Sendind position', this.currentPosition);
     this.ws.send(JSON.stringify({
       type: "updateCoordinates",
       coordinates: this.currentPosition
