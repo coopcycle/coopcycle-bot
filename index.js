@@ -163,7 +163,7 @@ function runCustomerBots(frequency) {
 
           var deliveryAddress = _.first(_.shuffle(data.deliveryAddresses));
           var uri = '/api/restaurants?coordinate=' + deliveryAddress.geo.latitude
-            + ',' + deliveryAddress.geo.longitude+'&distance=3000';
+            + ',' + deliveryAddress.geo.longitude+'&distance=1500';
 
           return client.request('GET', uri)
             .then((data) => {
