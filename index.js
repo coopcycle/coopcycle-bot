@@ -16,6 +16,7 @@ var upload = multer({ storage: storage });
 
 var API = require('./src/API');
 var User = require('./src/User');
+var PM2Utils = require('./src/PM2Utils');
 
 var Sequelize = require('sequelize');
 
@@ -104,47 +105,6 @@ app.use(function(req, res, next) {
 
 var server = require('http').Server(app);
 var io = require('socket.io')(server);
-
-function startBot(courier, cb) {
-
-  console.log('Starting bot ' + courier.username);
-
-  var filename = 'gpx/' + courier.routine.id + '.gpx';
-
-  var args = [
-    courier.username,
-    courier.password,
-    filename,
-    baseURL
-  ];
-
-  pm2.connect(function(err) {
-    if (err) return cb(err);
-
-    var watch = process.env.NODE_ENV === 'production' ? false : ['bot.js', './src/*.js'];
-
-    pm2.start({
-      name: 'coopcycle-bot-' + courier.username,
-      script: 'bot.js',
-      watch: watch,
-      args: args,
-    }, function(err, apps) {
-      pm2.disconnect();
-      cb(err);
-    });
-  });
-}
-
-function stopBot(courier, cb) {
-  console.log('Stopping bot ' + courier.username);
-  pm2.connect(function(err) {
-    if (err) return cb(err);
-    pm2.stop('coopcycle-bot-' + courier.username, function(err) {
-      pm2.disconnect();
-      cb(err);
-    });
-  });
-}
 
 function refreshApps() {
   console.time("Listing apps");
@@ -423,7 +383,7 @@ app.post('/settings', ensureLoggedIn(), (req, res) => {
 
 app.post('/bots/:id/start', ensureLoggedIn(), (req, res) => {
   Db.Courier.findById(req.params.id, {include: [Db.Routine]}).then((courier) => {
-    startBot(courier, (err) => {
+    PM2Utils.startBot(courier, (err) => {
       res.setHeader('Content-Type', 'application/json');
       res.send(JSON.stringify(err ? 'KO' : 'OK'));
     })
@@ -432,7 +392,7 @@ app.post('/bots/:id/start', ensureLoggedIn(), (req, res) => {
 
 app.post('/bots/:id/stop', ensureLoggedIn(), (req, res) => {
   Db.Courier.findById(req.params.id, {include: [Db.Routine]}).then((courier) => {
-    stopBot(courier, (err) => {
+    PM2Utils.stopBot(courier, (err) => {
       res.setHeader('Content-Type', 'application/json');
       res.send(JSON.stringify(err ? 'KO' : 'OK'));
     })
