@@ -263,7 +263,7 @@ Courier.prototype.goto = function(route, cb) {
     coordinates: this.currentPosition
   }));
 
-  this.timeout = setTimeout(this.goto.bind(this, route, cb), 1000);
+  this.timeout = setTimeout(this.goto.bind(this, route, cb), 4000);
 }
 
 Courier.prototype.acceptOrder = function(order) {
