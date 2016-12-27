@@ -3,13 +3,28 @@ var WebSocket = require('ws');
 var FormData = require('form-data');
 var _ = require('underscore');
 var API = require('./API');
-var DirectionsAPI = require('./DirectionsAPI');
 var Promise = require('promise');
+var Polyline = require('polyline');
 
 var winston = require('winston');
 winston.level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
 
-function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI) {
+var toPolylineCoordinates = function(polyline) {
+  var steps = Polyline.decode(polyline);
+  var polylineCoords = [];
+
+  for (var i = 0; i < steps.length; i++) {
+    var tempLocation = {
+      latitude : steps[i][0],
+      longitude : steps[i][1]
+    }
+    polylineCoords.push(tempLocation);
+  }
+
+  return polylineCoords;
+}
+
+function Courier(model, route, httpBaseURL, wsBaseURL) {
 
   this.model = model;
   this.client = API.createClient(httpBaseURL, model);
@@ -17,7 +32,6 @@ function Courier(model, route, httpBaseURL, wsBaseURL, directionsAPI) {
   this.route = route;
   this.httpBaseURL = httpBaseURL;
   this.wsBaseURL = wsBaseURL;
-  this.directionsAPI = directionsAPI;
 
   this.timeout = undefined;
   this.ws = undefined;
@@ -76,7 +90,7 @@ Courier.prototype.updateCoords = function() {
 }
 
 Courier.prototype.connect = function() {
-  this.info('Checking status...', this.currentPosition);
+  this.info('Checking status...');
   this.client.request('GET', '/api/me/status').then((data) => {
 
     this.info('Status = ' + data.status);
@@ -135,18 +149,20 @@ function _goto(route, cb) {
 }
 
 Courier.prototype.goto = function(destination, cb) {
-  this.directionsAPI.getDirections({
-    origin: this.currentPosition,
-    destination: destination
-  })
-  .then((data) => {
-    var route = DirectionsAPI.toPolylineCoordinates(data);
-    this.info('Going to ' + JSON.stringify(destination));
-    _goto.call(this, route, () => {
-      this.info('Arrived at ' + JSON.stringify(destination));
-      cb();
+
+  var originParam = [this.currentPosition.latitude, this.currentPosition.longitude].join(',');
+  var destinationParam = [destination.latitude, destination.longitude].join(',');
+
+  this.client
+    .request('GET', '/api/routing/route?origin=' + originParam + '&destination=' + destinationParam)
+    .then((data) => {
+      var route = toPolylineCoordinates(data.routes[0].geometry);
+      this.info('Going to ' + JSON.stringify(destination));
+      _goto.call(this, route, () => {
+        this.info('Arrived at ' + JSON.stringify(destination));
+        cb();
+      });
     });
-  });
 }
 
 Courier.prototype.resumeOrder = function(order) {

@@ -5,13 +5,7 @@
 var fs = require('fs');
 var _ = require('underscore');
 var parseXML = require('xml2js').parseString;
-var DirectionsAPI = require('./src/DirectionsAPI');
 var Courier = require('./src/Courier');
-
-var CONFIG = require('./config.json');
-
-var GOOGLE_API_KEY = CONFIG.GOOGLE_API_KEY;
-var directionsAPI = new DirectionsAPI(GOOGLE_API_KEY);
 
 var Sequelize = require('sequelize');
 var sequelize = new Sequelize('database', 'username', 'password', {
@@ -50,8 +44,7 @@ Db.Courier.findOne({
       model,
       points,
       httpBaseURL,
-      wsBaseURL,
-      directionsAPI
+      wsBaseURL
     );
     courier.connect();
   });
