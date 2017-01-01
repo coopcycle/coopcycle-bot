@@ -18,6 +18,9 @@ var API = require('./src/API');
 var User = require('./src/User');
 var PM2Utils = require('./src/PM2Utils');
 
+var CONFIG = require('./config.json');
+var stripe = require("stripe")(CONFIG.STRIPE_SECRET_KEY);
+
 var Sequelize = require('sequelize');
 
 var sequelize = new Sequelize('database', 'username', 'password', {
@@ -189,13 +192,33 @@ function runCustomerBots(frequency) {
                 }
               });
 
-              console.log(cart);
-
               return client.request('POST', '/api/orders', cart);
             })
-            .then((data) => {
+            .then((order) => {
               console.log('Order created!');
-              io.sockets.emit('order', data);
+              return new Promise((resolve, reject) => {
+                stripe.tokens.create({
+                  card: {
+                    "number": '4242424242424242',
+                    "exp_month": 12,
+                    "exp_year": 2018,
+                    "cvc": '123'
+                  }
+                }, function(err, token) {
+                  if (err) throw err;
+                  resolve({order: order, token: token});
+                });
+              });
+            })
+            .then((args) => {
+              console.log('Cart token created!', args.token.id);
+              return client.request('PUT', args.order['@id'] + '/pay', {
+                stripeToken: args.token.id
+              });
+            })
+            .then((order) => {
+              console.log('Order paid!');
+              io.sockets.emit('order', order);
             });
         })
 
