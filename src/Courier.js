@@ -51,6 +51,8 @@ function Courier(model, route, httpBaseURL, wsBaseURL) {
     if (currentIndex) {
       this.currentIndex = currentIndex;
     }
+  } else {
+    this.currentPosition = this.route[this.currentIndex];
   }
 }
 
@@ -135,7 +137,7 @@ Courier.prototype.connect = function() {
   });
 }
 
-function _goto(route, cb) {
+function _goto(route, milliseconds, cb) {
   var position = route.shift();
 
   if (!position) {
@@ -145,7 +147,7 @@ function _goto(route, cb) {
 
   this.currentPosition = position;
   this.sendCurrentPosition();
-  this.timeout = setTimeout(_goto.bind(this, route, cb), 4000);
+  this.timeout = setTimeout(_goto.bind(this, route, milliseconds, cb), milliseconds);
 }
 
 Courier.prototype.goto = function(destination, cb) {
@@ -156,9 +158,14 @@ Courier.prototype.goto = function(destination, cb) {
   this.client
     .request('GET', '/api/routing/route?origin=' + originParam + '&destination=' + destinationParam)
     .then((data) => {
+
+      var duration = data.routes[0].duration;
       var route = toPolylineCoordinates(data.routes[0].geometry);
-      this.info('Going to ' + JSON.stringify(destination));
-      _goto.call(this, route, () => {
+      var milliseconds = Math.ceil((duration / route.length) * 1000);
+
+      this.info('Going to ' + JSON.stringify(destination) + ' in ' + Math.ceil((duration / 60).toFixed(2)) + 'min'
+          + ' (' + route.length + ' steps, ' + (milliseconds / 1000) + 's per step)');
+      _goto.call(this, route, milliseconds, () => {
         this.info('Arrived at ' + JSON.stringify(destination));
         cb();
       });
