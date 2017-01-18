@@ -7,6 +7,7 @@ module.exports = {
     index: './app/js/index.js'
   },
   output: {
+    publicPath: '/',
     path: __dirname + '/web',
     filename: "js/[name].js",
   },
@@ -18,11 +19,14 @@ module.exports = {
       },
       {
         test: /\.css$/,
-        loader: 'style!css?modules&localIdentName=[local]'
+        loader: 'style-loder!css-loader?modules&localIdentName=[local]'
       },
       {
         test: /\.scss$/,
-        loader: ExtractTextPlugin.extract('style', 'css?modules&importLoaders=1&localIdentName=[local]!sass'),
+        loader: ExtractTextPlugin.extract({
+          fallbackLoader: 'style-loader',
+          loader: 'css-loader?modules&importLoaders=1&localIdentName=[local]!sass-loader'
+        }),
         exclude: /node_modules|lib/,
       },
       {
@@ -42,5 +46,11 @@ module.exports = {
       $: "jquery",
       jQuery: "jquery"
     })
-  ]
+  ],
+  devServer: {
+    port: 9090,
+    contentBase: __dirname + '/web',
+    stats: 'minimal',
+    compress: true
+  }
 };

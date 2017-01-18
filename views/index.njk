@@ -77,5 +77,8 @@
 <script>
 var couriers = {{ couriers | dump | safe }};
 </script>
-<script src="/js/index.js"></script>
+<script src="{{ assetURL('js/index.js') }}"></script>
+{% if not isProduction() %}
+<script src="{{ assetURL('webpack-dev-server.js') }}"></script>
+{% endif %}
 {% endblock %}

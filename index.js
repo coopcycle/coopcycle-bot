@@ -9,6 +9,7 @@ var fetch = require('node-fetch');
 var schedule = require('node-schedule');
 
 var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
+var assetsBaseURL = process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:9090/';
 
 var multer = require('multer');
 var storage = multer.memoryStorage();
@@ -101,8 +102,13 @@ function hasRole(req, role) {
 app.use(function(req, res, next) {
   res.locals.user = new User(req.isAuthenticated() ? req.user : null);
   res.locals.hasRole = function(role) {
-    // return req.isAuthenticated() ? _.contains(req.user.roles, role) : false;
     return hasRole(req, role);
+  }
+  res.locals.assetURL = function(uri) {
+    return assetsBaseURL + uri;
+  }
+  res.locals.isProduction = function() {
+    return process.env.NODE_ENV === 'production';
   }
   next();
 });
