@@ -113,6 +113,7 @@ function refreshApps() {
   pm2.connect(function(err) {
     if (err) throw err;
     pm2.list(function(err, apps) {
+      if (err) throw err;
 
       pm2.disconnect();
 

@@ -8,7 +8,7 @@ if (window.location.port) {
 
 var socket = io.connect('//' + hostname);
 
-$('#couriers button.start-stop').on('click', function(e) {
+$('#couriers button.start-stop').not('.disabled').on('click', function(e) {
   var status = $(e.currentTarget).data('status');
   var id = $(this).parents('tr').data('courier-id');
   if (status === 'online') {

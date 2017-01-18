@@ -19,6 +19,7 @@
     <th>Routine</th>
     <th>Status</th>
     <th></th>
+    <th></th>
   </thead>
   <tbody>
   {% for courier in couriers %}
@@ -27,14 +28,20 @@
     <td>{{ courier.username }}</td>
     <td>{{ courier.routine.name }}</td>
     <td><strong><span class="status"></span></strong></td>
-    <td><button type="button" class="pull-right btn btn-xs btn-success start-stop" data-status="">Start bot</button></td>
-    {% if hasRole('ROLE_ADMIN') %}
     <td>
+    {% if (user.isAuthenticated and user.username == courier.username) or hasRole('ROLE_ADMIN') %}
+      <button type="button" class="btn btn-xs btn-success pull-right start-stop" data-status="">Start bot</button>
+    {% else %}
+      <button type="button" class="btn btn-xs btn-success pull-right start-stop disabled" data-status="">Start bot</button>
+    {% endif %}
+    </td>
+    <td>
+    {% if hasRole('ROLE_ADMIN') %}
       <form method="post" action="/couriers/{{ courier.id }}/delete">
         <button type="submit" class="pull-right btn btn-xs btn-danger">Delete bot</button>
       </form>
-    </td>
     {% endif %}
+    </td>
   </tr>
   {% endfor %}
   </tbody>
