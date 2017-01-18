@@ -56,7 +56,21 @@ passport.use(new LocalStrategy(
   function(username, password, done) {
     API.login(baseURL, username, password)
       .then((user) => {
-        done(null, user);
+        Db.Courier.findOne({
+          where: {username: user.username}
+        })
+        .then((courier) => {
+          if (courier) {
+            console.log('Updating credentials in DB...');
+            courier.set('token', user.token);
+            courier.set('refreshToken', user.refresh_token);
+
+            return courier.save();
+          }
+        })
+        .then(() => {
+          done(null, user);
+        });
       })
       .catch((err) => {
         done(null, false, { message: 'Invalid credentials.' });
