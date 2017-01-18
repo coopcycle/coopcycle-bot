@@ -43,6 +43,6 @@ function stopBot(courier, cb) {
 
 module.exports = {
   startBot: startBot,
-  stopBot: startBot
+  stopBot: stopBot
 }
 
