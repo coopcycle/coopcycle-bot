@@ -16,6 +16,7 @@ var upload = multer({ storage: storage });
 
 var API = require('./src/API');
 var User = require('./src/User');
+var Customer = require('./src/Customer');
 var PM2Utils = require('./src/PM2Utils');
 
 var CONFIG = require('./config.json');
@@ -143,86 +144,17 @@ var FREQUENCIES = {
 }
 
 function runCustomerBots(frequency) {
-
   console.log('Cron job running ' + frequency);
-
   Db.Customer.findAll({
     where: {
       frequency: frequency,
     }
   }).then((customers) => {
-    customers.forEach((customer) => {
-
-      var credentials = {
-        token: customer.token,
-        refreshToken: customer.refreshToken
-      }
-      var client = API.createClient(baseURL, customer);
-
-      client.request('GET', '/api/me')
-        .then((data) => {
-
-          var deliveryAddress = _.first(_.shuffle(data.deliveryAddresses));
-          var uri = '/api/restaurants?coordinate=' + deliveryAddress.geo.latitude
-            + ',' + deliveryAddress.geo.longitude+'&distance=1500';
-
-          return client.request('GET', uri)
-            .then((data) => {
-
-              var restaurants = data['hydra:member'];
-              var restaurant = _.first(_.shuffle(restaurants));
-
-              var numberOfProducts = _.random(1, 5);
-              var products = [];
-              if (restaurant.products.length > 0) {
-                while (products.length < numberOfProducts) {
-                  products.push(_.first(_.shuffle(restaurant.products)));
-                }
-              }
-
-              var cart = {
-                restaurant: restaurant['@id'],
-                deliveryAddress: '/api/delivery_addresses/' + deliveryAddress.id,
-                orderedItem: []
-              }
-              var groupedItems = _.countBy(products, (product) => product['@id']);
-              cart.orderedItem = _.map(groupedItems, (quantity, product) => {
-                return {
-                  quantity: quantity,
-                  product: product
-                }
-              });
-
-              return client.request('POST', '/api/orders', cart);
-            })
-            .then((order) => {
-              console.log('Order created!');
-              return new Promise((resolve, reject) => {
-                stripe.tokens.create({
-                  card: {
-                    "number": '4242424242424242',
-                    "exp_month": 12,
-                    "exp_year": 2018,
-                    "cvc": '123'
-                  }
-                }, function(err, token) {
-                  if (err) throw err;
-                  resolve({order: order, token: token});
-                });
-              });
-            })
-            .then((args) => {
-              console.log('Cart token created!', args.token.id);
-              return client.request('PUT', args.order['@id'] + '/pay', {
-                stripeToken: args.token.id
-              });
-            })
-            .then((order) => {
-              console.log('Order paid!');
-              io.sockets.emit('order', order);
-            });
-        })
-
+    customers.forEach((model) => {
+      var customer = new Customer(model);
+      customer.createRandomOrder((order) => {
+        io.sockets.emit('order', order);
+      })
     });
   })
 }
