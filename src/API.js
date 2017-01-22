@@ -57,6 +57,7 @@ Client.prototype.fetch = function(req) {
             })
             .catch((err) => {
               console.log('Refresh token is not valid ' + this.model.refreshToken);
+              this.model.onRefreshTokenError();
             });
         }
 

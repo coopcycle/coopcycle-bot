@@ -6,6 +6,7 @@ var fs = require('fs');
 var _ = require('underscore');
 var parseXML = require('xml2js').parseString;
 var Courier = require('./src/Courier');
+var PM2Utils = require('./src/PM2Utils');
 
 var Sequelize = require('sequelize');
 var sequelize = new Sequelize('database', 'username', 'password', {
@@ -25,6 +26,10 @@ var wsBaseURL = httpBaseURL.startsWith('http://') ? httpBaseURL.replace('http://
 var xml = fs.readFileSync(gpxFile);
 var points = [];
 var courier;
+
+Db.Courier.addRefreshTokenErrorListener((courier) => {
+  PM2Utils.stopBot(courier, () => {});
+});
 
 Db.Courier.findOne({
   where: {username: username}

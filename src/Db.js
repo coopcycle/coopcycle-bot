@@ -1,10 +1,10 @@
 var Sequelize = require('sequelize');
 
+var listeners = [];
+
 module.exports = function(sequelize) {
 
-  var Db = {}
-
-  Db.Courier = sequelize.define('courier', {
+  var Courier = sequelize.define('courier', {
     id: {
       type: Sequelize.INTEGER,
       primaryKey: true,
@@ -26,7 +26,17 @@ module.exports = function(sequelize) {
     },
   });
 
-  Db.Customer = sequelize.define('customer', {
+  Courier.addRefreshTokenErrorListener = function(listener) {
+    listeners.push(listener);
+  }
+
+  Courier.Instance.prototype.onRefreshTokenError = function() {
+    listeners.forEach((listener) => {
+      listener.apply(null, [this]);
+    })
+  }
+
+  var Customer = sequelize.define('customer', {
     id: {
       type: Sequelize.INTEGER,
       primaryKey: true,
@@ -38,7 +48,7 @@ module.exports = function(sequelize) {
     frequency: Sequelize.STRING,
   });
 
-  Db.Routine = sequelize.define('routine', {
+  var Routine = sequelize.define('routine', {
     id: {
       type: Sequelize.INTEGER,
       primaryKey: true,
@@ -48,7 +58,11 @@ module.exports = function(sequelize) {
     description: Sequelize.TEXT,
   });
 
-  Db.Courier.belongsTo(Db.Routine);
+  Courier.belongsTo(Routine);
 
-  return Db;
+  return {
+    Courier: Courier,
+    Customer: Customer,
+    Routine: Routine
+  };
 }
