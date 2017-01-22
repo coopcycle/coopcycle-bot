@@ -56,6 +56,7 @@ passport.use(new LocalStrategy(
   function(username, password, done) {
     API.login(baseURL, username, password)
       .then((user) => {
+
         Db.Courier.findOne({
           where: {username: user.username}
         })
@@ -66,6 +67,22 @@ passport.use(new LocalStrategy(
             courier.set('refreshToken', user.refresh_token);
 
             return courier.save();
+          }
+        })
+        .then(() => {
+          done(null, user);
+        });
+
+        Db.Customer.findOne({
+          where: {username: user.username}
+        })
+        .then((customer) => {
+          if (customer) {
+            console.log('Updating credentials in DB...');
+            customer.set('token', user.token);
+            customer.set('refreshToken', user.refresh_token);
+
+            return customer.save();
           }
         })
         .then(() => {
