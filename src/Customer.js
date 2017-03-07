@@ -40,7 +40,7 @@ Customer.prototype.createRandomOrder = function(cb) {
 
           var cart = {
             restaurant: restaurant['@id'],
-            deliveryAddress: '/api/delivery_addresses/' + deliveryAddress.id,
+            deliveryAddress: deliveryAddress['@id'],
             orderedItem: []
           }
           var groupedItems = _.countBy(products, (product) => product['@id']);
