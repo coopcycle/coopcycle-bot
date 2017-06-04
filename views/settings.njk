@@ -34,7 +34,7 @@
   </div>
   {% endif %}
 
-  {% if hasRole('ROLE_CUSTOMER') %}
+  {% if not hasRole('ROLE_COURIER') %}
   <div class="form-group">
     <label for="password">Frequency</label>
     <select name="frequency" class="form-control">

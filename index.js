@@ -189,9 +189,13 @@ function runCustomerBots(frequency) {
   }).then((customers) => {
     customers.forEach((model) => {
       var customer = new Customer(model);
-      customer.createRandomOrder((order) => {
-        io.sockets.emit('order', order);
-      })
+      customer.createRandomOrder()
+        .then((order) => {
+          io.sockets.emit('order', order);
+        })
+        .catch((err) => {
+          console.log('Could not create order', err);
+        })
     });
   })
 }
@@ -249,7 +253,7 @@ app.get('/', (req, res) => {
     res.render('index', {
       couriers: couriers,
       customers: customers,
-      isConfigured: (courier && courier.routineId),
+      isConfigured: (courier && courier.routineId) || (customer && customer.frequency),
     });
   });
 
@@ -291,7 +295,7 @@ app.get('/settings', ensureLoggedIn(), (req, res) => {
     });
   }
 
-  if (hasRole(req, 'ROLE_CUSTOMER')) {
+  if (!hasRole(req, 'ROLE_COURIER')) {
     Db.Customer.findOne({
         where: {username: req.user.username}
       }).then((customer) => {
@@ -303,16 +307,6 @@ app.get('/settings', ensureLoggedIn(), (req, res) => {
           messages: req.flash()
         });
       });
-  }
-
-  if (!hasRole(req, 'ROLE_COURIER') && !hasRole(req, 'ROLE_CUSTOMER')) {
-    res.render('settings', {
-      settings: {
-        // routineId: courier ? courier.routineId : null
-      },
-      // routines: routines,
-      messages: req.flash()
-    });
   }
 
 });
@@ -351,7 +345,7 @@ app.post('/settings', ensureLoggedIn(), (req, res) => {
     }
   }
 
-  if (hasRole(req, 'ROLE_CUSTOMER')) {
+  if (!hasRole(req, 'ROLE_COURIER')) {
     if (req.body.frequency) {
       Db.Customer.findOne({
         where: {username: req.user.username}
@@ -429,6 +423,16 @@ app.post('/couriers/:id/delete', ensureLoggedIn(), (req, res) => {
       id: req.params.id
     }
   }).then(() => res.redirect('/'));
+});
+
+app.post('/customers/:id/delete', ensureLoggedIn(), (req, res) => {
+  if (hasRole(req, 'ROLE_ADMIN')) {
+    Db.Customer.destroy({
+      where: {
+        id: req.params.id
+      }
+    }).then(() => res.redirect('/'));
+  }
 });
 
 app.get('/routines', (req, res) => {

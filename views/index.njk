@@ -6,7 +6,7 @@
   <div class="alert alert-info">Welcome to the CoopCycle bots GUI. <a href="/login">Login</a> with your CoopCycle account to get started.</div>
 {% endif %}
 
-{% if user.isAuthenticated and not hasRole('ROLE_ADMIN') and hasRole('ROLE_COURIER') and not isConfigured %}
+{% if user.isAuthenticated and not hasRole('ROLE_ADMIN') and not isConfigured %}
   <div class="alert alert-warning">Bot not configured yet. <a href="/settings">Let's go.</a></div>
 {% endif %}
 
@@ -47,6 +47,12 @@
   </tbody>
 </table>
 
+{% if hasRole('ROLE_ADMIN') %}
+<a class="btn btn-primary" href="/couriers/new">Add a courier bot</a>
+{% endif %}
+
+<hr>
+
 <h2>Customers</h2>
 
 <table id="customers" class="table">
@@ -61,14 +67,17 @@
     <td><a href="#">#{{ customer.id }}</a></td>
     <td>{{ customer.username }}</td>
     <td>{{ customer.frequency }}</td>
+    <td>
+    {% if hasRole('ROLE_ADMIN') %}
+      <form method="post" action="/customers/{{ customer.id }}/delete">
+        <button type="submit" class="pull-right btn btn-xs btn-danger">Delete bot</button>
+      </form>
+    {% endif %}
+    </td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
-
-{% if hasRole('ROLE_ADMIN') %}
-<a class="btn btn-primary" href="/couriers/new">Add a courier bot</a>
-{% endif %}
 
 {% endblock %}
 
