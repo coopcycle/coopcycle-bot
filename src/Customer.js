@@ -1,13 +1,19 @@
-var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
-var CONFIG = require('../config.json');
-
-var stripe = require("stripe")(CONFIG.STRIPE_SECRET_KEY);
-var API = require('./API');
 var Promise = require('promise');
 var _ = require('underscore');
 
+const CONFIG = require('../config.json')
+const stripe = require("stripe")(CONFIG.STRIPE_SECRET_KEY)
+
+require('./fetch-polyfill')
+const CoopCycle = require('coopcycle-js')
+
+
 function Customer(model) {
   this.model = model;
+  this.client = new CoopCycle.Client(CONFIG.COOPCYCLE_BASE_URL, {
+    token: model.token,
+    refresh_token: model.refreshToken
+  })
 }
 
 function findNearbyRestaurant(client, address) {
@@ -28,32 +34,43 @@ function findNearbyRestaurant(client, address) {
   });
 }
 
+function getRandomMenuItem(restaurant) {
+  const menuSections = restaurant.hasMenu.hasMenuSection;
+  const randomSectionIndex = _.random(0, menuSections.length - 1);
+  const randomSection = menuSections[randomSectionIndex];
+  const randomizedItems = _.shuffle(randomSection.hasMenuItem);
+
+  return randomizedItems[0];
+}
+
 function buildRandomOrder(client, restaurant, address) {
 
-  var numberOfProducts = _.random(1, 5);
-  var products = [];
-  if (restaurant.products.length > 0) {
-    while (products.length < numberOfProducts) {
-      products.push(_.first(_.shuffle(restaurant.products)));
-    }
+  if (!restaurant.hasMenu) {
+    return new Promise((resolve, reject) => reject('No menu available'))
   }
 
-  var cart = {
+  var numberOfProducts = _.random(1, 5);
+  var menuItems = [];
+  while (menuItems.length < numberOfProducts) {
+    menuItems.push(getRandomMenuItem(restaurant));
+  }
+
+  var groupedItems = _.countBy(menuItems, menuItem => menuItem['@id']);
+
+  var order = {
     restaurant: restaurant['@id'],
     delivery: {
       deliveryAddress: address['@id']
     },
-    orderedItem: []
+    orderedItem: _.map(groupedItems, (quantity, menuItem) => {
+      return {
+        quantity: quantity,
+        menuItem: menuItem
+      }
+    })
   }
-  var groupedItems = _.countBy(products, (product) => product['@id']);
-  cart.orderedItem = _.map(groupedItems, (quantity, product) => {
-    return {
-      quantity: quantity,
-      product: product
-    }
-  });
 
-  return client.request('POST', '/api/orders', cart);
+  return client.request('POST', '/api/orders', order);
 }
 
 Customer.prototype.createRandomOrder = function() {
@@ -62,12 +79,11 @@ Customer.prototype.createRandomOrder = function() {
     token: this.model.token,
     refreshToken: this.model.refreshToken
   }
-  var client = API.createClient(baseURL, this.model);
 
   return new Promise((resolve, reject) => {
 
-    client.request('GET', '/api/me')
-      .then((data) => {
+    this.client.request('GET', '/api/me')
+      .then(data => {
 
         if (data.addresses.length === 0) {
           return reject('Customer ' + this.model.username + ' has no adresses');
@@ -75,10 +91,10 @@ Customer.prototype.createRandomOrder = function() {
 
         var deliveryAddress = _.first(_.shuffle(data.addresses));
 
-        findNearbyRestaurant(client, deliveryAddress)
+        findNearbyRestaurant(this.client, deliveryAddress)
           .then((restaurant) => {
             console.log('Restaurant found!');
-            return buildRandomOrder(client, restaurant, deliveryAddress);
+            return buildRandomOrder(this.client, restaurant, deliveryAddress);
           })
           .then((order) => {
             console.log('Order created!');
@@ -98,7 +114,7 @@ Customer.prototype.createRandomOrder = function() {
           })
           .then((args) => {
             console.log('Cart token created!', args.token.id);
-            return client.request('PUT', args.order['@id'] + '/pay', {
+            return this.client.request('PUT', args.order['@id'] + '/pay', {
               stripeToken: args.token.id
             });
           })
@@ -109,7 +125,8 @@ Customer.prototype.createRandomOrder = function() {
           .catch((err) => {
             reject(err);
           })
-      });
+      })
+      .catch(err => console.log(err));
 
     });
 }

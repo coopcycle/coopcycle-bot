@@ -7,3 +7,4 @@
 /data/*
 !data/.gitkeep
 /config.json
+pm2.deploy.json

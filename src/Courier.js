@@ -2,12 +2,16 @@ var fs = require('fs');
 var WebSocket = require('ws');
 var FormData = require('form-data');
 var _ = require('underscore');
-var API = require('./API');
 var Promise = require('promise');
 var Polyline = require('polyline');
 
 var winston = require('winston');
 winston.level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
+
+const CONFIG = require('../config.json')
+
+require('./fetch-polyfill')
+const CoopCycle = require('coopcycle-js')
 
 var toPolylineCoordinates = function(polyline) {
   var steps = Polyline.decode(polyline);
@@ -24,13 +28,15 @@ var toPolylineCoordinates = function(polyline) {
   return polylineCoords;
 }
 
-function Courier(model, route, httpBaseURL, wsBaseURL) {
+function Courier(model, route, wsBaseURL) {
 
   this.model = model;
-  this.client = API.createClient(httpBaseURL, model);
+  this.client = new CoopCycle.Client(CONFIG.COOPCYCLE_BASE_URL, {
+    token: model.token,
+    refresh_token: model.refreshToken
+  })
 
   this.route = route;
-  this.httpBaseURL = httpBaseURL;
   this.wsBaseURL = wsBaseURL;
 
   this.timeout = undefined;
@@ -93,48 +99,52 @@ Courier.prototype.updateCoords = function() {
 
 Courier.prototype.connect = function() {
   this.info('Checking status...');
-  this.client.request('GET', '/api/me/status').then((data) => {
+  this.client.request('GET', '/api/me/status')
+    .then(data => {
 
-    this.info('Status = ' + data.status);
+      console.log(data);
 
-    this.info('Connecting to WS server');
-    this.ws = new WebSocket(this.wsBaseURL + '/realtime', '', {
-      headers: {
-        Authorization: "Bearer " + this.model.get('token')
+      this.info('Status = ' + data.status);
+
+      this.info('Connecting to WS server');
+      this.ws = new WebSocket(this.wsBaseURL + '/realtime', '', {
+        headers: {
+          Authorization: "Bearer " + this.model.get('token')
+        }
+      });
+
+      this.ws.onopen = () => {
+
+        this.info('Connected to WS server!');
+
+        clearTimeout(this.timeout);
+
+        if (data.status === 'DELIVERING') {
+          this.info('Resuming delivery of order', data.order);
+          this.resumeOrder(data.order);
+        } else {
+          this.info('Resuming routine');
+          this.updateCoords();
+        }
       }
-    });
 
-    this.ws.onopen = () => {
+      this.ws.onmessage = this.onMessage.bind(this);
 
-      this.info('Connected to WS server!');
-
-      clearTimeout(this.timeout);
-
-      if (data.status === 'DELIVERING') {
-        this.info('Resuming delivery of order', data.order);
-        this.resumeOrder(data.order);
-      } else {
-        this.info('Resuming routine');
-        this.updateCoords();
+      this.ws.onclose = (e) => {
+        this.info('Connection closed!');
+        clearTimeout(this.timeout);
+        setTimeout(this.connect.bind(this), 1000);
       }
-    }
 
-    this.ws.onmessage = this.onMessage.bind(this);
-
-    this.ws.onclose = (e) => {
-      this.info('Connection closed!');
-      clearTimeout(this.timeout);
-      setTimeout(this.connect.bind(this), 1000);
-    }
-
-    this.ws.onerror = (e) => {
-      this.info('Connection error!', e.message);
-      this.ws.onclose = function () {}; // Disable onclose handler
-      clearTimeout(this.timeout);
-      this.info('Will retry connecting in 5s');
-      setTimeout(this.connect.bind(this), 5000);
-    }
-  });
+      this.ws.onerror = (e) => {
+        this.info('Connection error!', e.message);
+        this.ws.onclose = function () {}; // Disable onclose handler
+        clearTimeout(this.timeout);
+        this.info('Will retry connecting in 5s');
+        setTimeout(this.connect.bind(this), 5000);
+      }
+    })
+    .catch(err => console.log(err));
 }
 
 function _goto(route, milliseconds, cb) {
@@ -169,7 +179,8 @@ Courier.prototype.goto = function(destination, cb) {
         this.info('Arrived at ' + JSON.stringify(destination));
         cb();
       });
-    });
+    })
+    .catch(err => console.log(err));
 }
 
 Courier.prototype.resumeOrder = function(order) {

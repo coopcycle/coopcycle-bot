@@ -17,10 +17,12 @@ var sequelize = new Sequelize('database', 'username', 'password', {
 
 var Db = require('./src/Db')(sequelize);
 
+const CONFIG = require('./config.json');
+
 var username = process.argv[2];
 var password = process.argv[3];
 var gpxFile = process.argv[4];
-var httpBaseURL = process.argv[5];
+var httpBaseURL = CONFIG.COOPCYCLE_BASE_URL;
 var wsBaseURL = httpBaseURL.startsWith('http://') ? httpBaseURL.replace('http://', 'ws://') : httpBaseURL.replace('https://', 'wss://');
 
 var xml = fs.readFileSync(gpxFile);
@@ -48,7 +50,6 @@ Db.Courier.findOne({
     courier = new Courier(
       model,
       points,
-      httpBaseURL,
       wsBaseURL
     );
     courier.connect();

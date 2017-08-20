@@ -1,7 +1,6 @@
 var pm2 = require('pm2');
 
 var watchOptions = process.env.NODE_ENV === 'production' ? false : ['bot.js', './src/*.js'];
-var baseURL = process.env.NODE_ENV === 'production' ? "https://coopcycle.org" : "http://coopcycle.dev";
 
 function startBot(courier, cb) {
   console.log('Starting bot ' + courier.username);
@@ -11,8 +10,7 @@ function startBot(courier, cb) {
   var args = [
     courier.username,
     courier.password,
-    filename,
-    baseURL
+    filename
   ];
 
   pm2.connect(function(err) {

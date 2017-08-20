@@ -48,7 +48,7 @@ module.exports = {
     })
   ],
   devServer: {
-    port: 9090,
+    port: 9091,
     contentBase: __dirname + '/web',
     stats: 'minimal',
     compress: true
