@@ -29,10 +29,6 @@ var xml = fs.readFileSync(gpxFile);
 var points = [];
 var courier;
 
-Db.Courier.addRefreshTokenErrorListener((courier) => {
-  PM2Utils.stopBot(courier, () => {});
-});
-
 Db.Courier.findOne({
   where: {username: username}
 }).then((model) => {
@@ -52,7 +48,14 @@ Db.Courier.findOne({
       points,
       wsBaseURL
     );
-    courier.connect();
+
+    try {
+      courier.connect();
+    } catch (e) {
+      console.log('Stopping bot...', err);
+      PM2Utils.stopBot(courier, () => {});
+    }
+
   });
 });
 

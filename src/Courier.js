@@ -31,10 +31,25 @@ var toPolylineCoordinates = function(polyline) {
 function Courier(model, route, wsBaseURL) {
 
   this.model = model;
+  const clientOptions = {
+    autoLogin: client => {
+      return new Promise((resolve, reject) => {
+        return client.login(model.username, model.username)
+          .then(credentials => {
+            console.log('Updating credentials in DB...');
+            this.model.set('token', credentials.token);
+            this.model.set('refreshToken', credentials.refresh_token);
+
+            return resolve(credentials)
+          })
+          .catch(err => reject(err))
+      })
+    }
+  }
   this.client = new CoopCycle.Client(CONFIG.COOPCYCLE_BASE_URL, {
     token: model.token,
-    refresh_token: model.refreshToken
-  })
+    refresh_token: model.refreshToken,
+  }, clientOptions)
 
   this.route = route;
   this.wsBaseURL = wsBaseURL;
@@ -144,7 +159,9 @@ Courier.prototype.connect = function() {
         setTimeout(this.connect.bind(this), 5000);
       }
     })
-    .catch(err => console.log(err));
+    .catch(err => {
+      throw new Error('Fatal error', e);
+    });
 }
 
 function _goto(route, milliseconds, cb) {

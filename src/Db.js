@@ -26,16 +26,6 @@ module.exports = function(sequelize) {
     },
   });
 
-  Courier.addRefreshTokenErrorListener = function(listener) {
-    listeners.push(listener);
-  }
-
-  Courier.Instance.prototype.onRefreshTokenError = function() {
-    listeners.forEach((listener) => {
-      listener.apply(null, [this]);
-    })
-  }
-
   var Customer = sequelize.define('customer', {
     id: {
       type: Sequelize.INTEGER,
