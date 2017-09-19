@@ -9,11 +9,27 @@ const CoopCycle = require('coopcycle-js')
 
 
 function Customer(model) {
+
   this.model = model;
+  const clientOptions = {
+    autoLogin: client => {
+      return new Promise((resolve, reject) => {
+        return client.login(model.username, model.username)
+          .then(credentials => {
+            console.log('Updating credentials in DB...');
+            this.model.set('token', credentials.token);
+            this.model.set('refreshToken', credentials.refresh_token);
+
+            return resolve(credentials)
+          })
+          .catch(err => reject(err))
+      })
+    }
+  }
   this.client = new CoopCycle.Client(CONFIG.COOPCYCLE_BASE_URL, {
     token: model.token,
     refresh_token: model.refreshToken
-  })
+  }, clientOptions)
 }
 
 function findNearbyRestaurant(client, address) {
