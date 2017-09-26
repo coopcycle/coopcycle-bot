@@ -135,8 +135,8 @@ Courier.prototype.connect = function() {
         clearTimeout(this.timeout);
 
         if (data.status === 'DELIVERING') {
-          this.info('Resuming delivery of order', data.order);
-          this.resumeOrder(data.order);
+          this.info('Resuming delivery of delivery', data.delivery);
+          this.resumeDelivery(data.delivery);
         } else {
           this.info('Resuming routine');
           this.updateCoords();
@@ -200,61 +200,61 @@ Courier.prototype.goto = function(destination, cb) {
     .catch(err => console.log(err));
 }
 
-Courier.prototype.resumeOrder = function(order) {
-  if (order.status === 'ACCEPTED') {
-    this.info('Going to restaurant to pick order');
-    this.goto(order.restaurant, () => {
+Courier.prototype.resumeDelivery = function(delivery) {
+  if (delivery.status === 'DISPATCHED') {
+    this.info('Going to restaurant to pick delivery');
+    this.goto(delivery.restaurant, () => {
       this.info('Arrived at restaurant!');
-      this.pickOrder(order);
+      this.pickDelivery(delivery);
     });
   }
-  if (order.status === 'PICKED') {
-    this.info('Going to delivery address to deliver order');
-    this.goto(order.deliveryAddress, () => {
+  if (delivery.status === 'PICKED') {
+    this.info('Going to delivery address to deliver delivery');
+    this.goto(delivery.deliveryAddress, () => {
       this.info('Arrived at delivery address!');
-      this.deliverOrder(order);
+      this.deliverDelivery(delivery);
     });
   }
 }
 
-Courier.prototype.acceptOrder = function(order) {
-  this.info('Accepting order #' + order.id);
-  this.client.request('PUT', '/api/orders/' + order.id + '/accept', {})
+Courier.prototype.acceptDelivery = function(delivery) {
+  this.info('Accepting delivery #' + delivery.id);
+  this.client.request('PUT', '/api/deliveries/' + delivery.id + '/accept', {})
     .then(() => {
-      this.info('Order #' + order.id + ' accepted!');
-      this.info('Going to restaurant to pick order');
-      this.goto(order.restaurant, () => {
+      this.info('Delivery #' + delivery.id + ' accepted!');
+      this.info('Going to restaurant to pick delivery');
+      this.goto(delivery.restaurant, () => {
         this.info('Arrived to restaurant!');
-        this.pickOrder(order);
+        this.pickDelivery(delivery);
       });
     })
     .catch((e) => {
-      throw new Error('CANNOT ACCEPT ORDER #' + order.id, e);
+      throw new Error('CANNOT ACCEPT #' + delivery.id, e);
     });
 }
 
-Courier.prototype.pickOrder = function(order) {
-  this.info('Picking order #' + order.id);
-  this.client.request('PUT', '/api/orders/' + order.id + '/pick', {})
+Courier.prototype.pickDelivery = function(delivery) {
+  this.info('Picking delivery #' + delivery.id);
+  this.client.request('PUT', '/api/deliveries/' + delivery.id + '/pick', {})
     .then(() => {
-      this.info('Order #' + order.id + ' picked!');
-      this.info('Going to delivery address to deliver order');
-      this.goto(order.deliveryAddress, () => {
+      this.info('Delivery #' + delivery.id + ' picked!');
+      this.info('Going to delivery address to deliver delivery');
+      this.goto(delivery.deliveryAddress, () => {
         this.info('Arrived at delivery address!');
-        this.deliverOrder(order);
+        this.deliverDelivery(delivery);
       });
     })
     .catch((e) => {
-      throw new Error('CANNOT PICK ORDER #' + order.id, e);
+      throw new Error('CANNOT PICK #' + delivery.id, e);
     });
 }
 
-Courier.prototype.deliverOrder = function(order) {
-  this.info('Delivering order #' + order.id);
-  this.client.request('PUT', '/api/orders/' + order.id + '/deliver', {})
+Courier.prototype.deliverDelivery = function(delivery) {
+  this.info('Delivering delivery #' + delivery.id);
+  this.client.request('PUT', '/api/deliveries/' + delivery.id + '/deliver', {})
     .then(() => {
-      this.info('Order #' + order.id + ' delivered!');
-      this.info('Order delivered, going back to routine');
+      this.info('Delivery #' + delivery.id + ' delivered!');
+      this.info('Delivery delivered, going back to routine');
       this.currentIndex = this.randomPosition();
       var randomPosition = this.route[this.currentIndex];
       this.goto(randomPosition, () => {
@@ -264,7 +264,7 @@ Courier.prototype.deliverOrder = function(order) {
       });
     })
     .catch((e) => {
-      throw new Error('CANNOT DELIVER ORDER #' + order.id, e);
+      throw new Error('CANNOT DELIVER #' + delivery.id, e);
     });
 }
 
@@ -273,9 +273,9 @@ Courier.prototype.onMessage = function(e) {
   var message = JSON.parse(e.data);
   this.info('Message received!', message);
 
-  if (message.type === 'order') {
+  if (message.type === 'delivery') {
     clearTimeout(this.timeout);
-    setTimeout(this.acceptOrder.bind(this, message.order), 5000);
+    setTimeout(this.acceptDelivery.bind(this, message.delivery), 5000);
   }
 }
 
