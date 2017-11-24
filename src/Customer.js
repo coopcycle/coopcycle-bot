@@ -1,5 +1,6 @@
 var Promise = require('promise');
 var _ = require('underscore');
+var moment = require('moment');
 
 const CONFIG = require('../config.json')
 const stripe = require("stripe")(CONFIG.STRIPE_SECRET_KEY)
@@ -76,7 +77,8 @@ function buildRandomOrder(client, restaurant, address) {
   var order = {
     restaurant: restaurant['@id'],
     delivery: {
-      deliveryAddress: address['@id']
+      deliveryAddress: address['@id'],
+      date: moment().add(60, 'minutes').format('YYYY-MM-DD HH:mm:ss')
     },
     orderedItem: _.map(groupedItems, (quantity, menuItem) => {
       return {
