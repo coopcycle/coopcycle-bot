@@ -85,6 +85,10 @@ Courier.prototype.info = function(msg, data) {
   winston.info('[' + this.model.username + '] ' + msg, data);
 }
 
+Courier.prototype.error = function(msg, data) {
+  winston.error('[' + this.model.username + '] ' + msg, data);
+}
+
 Courier.prototype.randomPosition = function() {
   return _.random(0, (this.route.length - 1));
 }
@@ -116,8 +120,6 @@ Courier.prototype.connect = function() {
   this.info('Checking status...');
   this.client.request('GET', '/api/me/status')
     .then(data => {
-
-      console.log(data);
 
       this.info('Status = ' + data.status);
 
@@ -203,7 +205,7 @@ Courier.prototype.goto = function(destination, cb) {
 Courier.prototype.resumeDelivery = function(delivery) {
   if (delivery.status === 'DISPATCHED') {
     this.info('Going to restaurant to pick delivery');
-    this.goto(delivery.restaurant, () => {
+    this.goto(delivery.originAddress, () => {
       this.info('Arrived at restaurant!');
       this.pickDelivery(delivery);
     });
@@ -223,12 +225,13 @@ Courier.prototype.acceptDelivery = function(delivery) {
     .then(() => {
       this.info('Delivery #' + delivery.id + ' accepted!');
       this.info('Going to restaurant to pick delivery');
-      this.goto(delivery.restaurant, () => {
+      this.goto(delivery.originAddress, () => {
         this.info('Arrived to restaurant!');
         this.pickDelivery(delivery);
       });
     })
     .catch((e) => {
+      this.error('CANNOT ACCEPT #' + delivery.id)
       throw new Error('CANNOT ACCEPT #' + delivery.id, e);
     });
 }
@@ -245,6 +248,7 @@ Courier.prototype.pickDelivery = function(delivery) {
       });
     })
     .catch((e) => {
+      this.error('CANNOT PICK #' + delivery.id)
       throw new Error('CANNOT PICK #' + delivery.id, e);
     });
 }
@@ -264,6 +268,7 @@ Courier.prototype.deliverDelivery = function(delivery) {
       });
     })
     .catch((e) => {
+      this.error('CANNOT DELIVER #' + delivery.id)
       throw new Error('CANNOT DELIVER #' + delivery.id, e);
     });
 }
