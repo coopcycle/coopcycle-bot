@@ -6,12 +6,24 @@ Right now there a 2 types of bots.
 
 **Couriers**, who have routines and wait for orders to deliver.
 
-### How to install
+Installation
+------------
 
 ```
 npm install
 npm install -g pm2
-pm2 start pm2.config.js
 ```
 
-Go to http://localhost:3000
+Running the server
+
+```
+make start
+```
+
+Go to http://localhost:3001
+
+Stopping the server
+
+```
+make stop
+```
