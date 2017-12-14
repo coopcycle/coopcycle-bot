@@ -7,4 +7,3 @@
 /data/*
 !data/.gitkeep
 /config.json
-/deploy/
