@@ -185,7 +185,7 @@ Courier.prototype.goto = function(destination, cb) {
   var destinationParam = [destination.latitude, destination.longitude].join(',');
 
   this.client
-    .request('GET', '/api/routing/route?origin=' + originParam + '&destination=' + destinationParam)
+    .request('GET', '/api/routing/route/' + originParam + ';' + destinationParam)
     .then((data) => {
 
       var duration = data.routes[0].duration;
