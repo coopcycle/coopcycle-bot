@@ -38,14 +38,18 @@ function Courier(username, client, webSocketClient, options) {
 
   if (lastPosition) {
     this.info('Starting at last position', lastPosition);
-    this.currentPosition = lastPosition;
 
     var currentIndex = _.findIndex(route, (point) => {
       return point.latitude === lastPosition.latitude && point.longitude === lastPosition.longitude
     });
-    if (currentIndex) {
-      this.currentIndex = currentIndex;
+
+    if (-1 === currentIndex) {
+      this.currentIndex = this.randomPosition()
+    } else {
+      this.currentIndex = currentIndex
     }
+    this.currentPosition = this.route[this.currentIndex];
+
   } else {
     this.currentPosition = this.route[this.currentIndex];
   }
