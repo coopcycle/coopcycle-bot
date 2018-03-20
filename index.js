@@ -47,8 +47,9 @@ var sequelize = new Sequelize('database', 'username', 'password', {
 
 var Db = require('./src/Db')(sequelize);
 
-Db.Courier.sync();
-Db.Routine.sync();
+Db.Routine.sync({ alter: true });
+Db.Courier.sync({ alter: true });
+
 
 /* Configure Passport */
 
@@ -183,7 +184,7 @@ app.get('/', (req, res) => {
   var promises = [];
   promises.push(Db.Courier.findAll({
     include: [Db.Routine],
-    attributes: ['id', 'username']
+    attributes: ['id', 'username', 'speedFactor']
   }));
   promises.push(new Promise((resolve, reject) => {
     if (!req.isAuthenticated()) {
@@ -235,10 +236,12 @@ app.get('/settings', ensureLoggedIn(), (req, res) => {
       }).then((courier) => {
         res.render('settings', {
           settings: {
-            routineId: courier ? courier.routineId : null
+            routineId: courier ? courier.routineId : null,
+            speedFactor: courier ? courier.speedFactor : 1
           },
           routines: routines,
-          messages: req.flash()
+          messages: req.flash(),
+          speedFactors: [ 0.5, 1, 2 ]
         });
       });
     });
@@ -255,6 +258,7 @@ app.post('/settings', ensureLoggedIn(), (req, res) => {
       .then((courier) => {
         if (courier) {
           courier.set('routineId', req.body.routine);
+          courier.set('speedFactor', req.body.speed_factor);
           return courier.save();
         }
 
@@ -263,6 +267,7 @@ app.post('/settings', ensureLoggedIn(), (req, res) => {
           token: req.user.token,
           refreshToken: req.user.refresh_token,
           routineId: req.body.routine,
+          speedFactor: req.body.speed_factor
         });
 
         })

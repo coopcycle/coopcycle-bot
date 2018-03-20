@@ -27,13 +27,14 @@ function Courier(username, client, webSocketClient, options) {
   this.client = client
   this.webSocketClient = webSocketClient
 
-  const { lastPosition, route } = options
+  const { lastPosition, route, speedFactor } = options
 
   this.timeout = undefined;
   this.currentIndex = 0;
   this.currentPosition = undefined;
 
   this.route = route
+  this.speedFactor = speedFactor
 
   if (lastPosition) {
     this.info('Starting at last position', lastPosition);
@@ -90,8 +91,6 @@ Courier.prototype.updateCoords = function() {
 
 }
 
-
-
 Courier.prototype.connect = function() {
   this.client.get('/api/me/tasks/' + moment().format('YYYY-MM-DD'))
     .then(tasks => {
@@ -145,11 +144,7 @@ Courier.prototype.goto = function(destination, cb) {
       .get(`/api/routing/route/${originParam};${destinationParam}`)
       .then((data) => {
 
-        var duration = data.routes[0].duration;
-
-        // TODO Implement speed factor
-        // duration = duration / 10
-
+        var duration = data.routes[0].duration * this.speedFactor;
         var route = toPolylineCoordinates(data.routes[0].geometry);
         var milliseconds = Math.ceil((duration / route.length) * 1000);
 

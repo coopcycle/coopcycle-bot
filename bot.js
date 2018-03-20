@@ -61,7 +61,8 @@ Db.Courier.findOne({
       webSocketClient,
       {
         lastPosition: model.get('lastPosition'),
-        route: route
+        route: route,
+        speedFactor: model.speedFactor
       }
     );
 

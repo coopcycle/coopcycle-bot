@@ -15,6 +15,10 @@ module.exports = function(sequelize) {
     token: Sequelize.STRING,
     refreshToken: Sequelize.STRING,
     lastPosition: Sequelize.STRING,
+    speedFactor: {
+      type: Sequelize.INTEGER,
+      defaultValue: 1
+    }
   }, {
     getterMethods: {
       lastPosition : function() {

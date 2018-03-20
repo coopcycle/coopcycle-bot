@@ -17,6 +17,7 @@
     <th></th>
     <th>Username</th>
     <th>Routine</th>
+    <th>Speed factor</th>
     <th>Status</th>
     <th></th>
     <th></th>
@@ -27,6 +28,7 @@
     <td><a href="#">#{{ courier.id }}</a></td>
     <td>{{ courier.username }}</td>
     <td>{{ courier.routine.name }}</td>
+    <td>{{ courier.speedFactor }}</td>
     <td><strong><span class="status"></span></strong></td>
     <td>
     {% if (user.isAuthenticated and user.username == courier.username) or hasRole('ROLE_ADMIN') %}

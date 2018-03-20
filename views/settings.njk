@@ -32,6 +32,20 @@
     </select>
     <p class="help-block">This is the routine that your bot will use.</p>
   </div>
+  <div class="form-group">
+    <label for="speed_factor">Speed factor</label>
+    <select name="speed_factor" class="form-control">
+      <option value="">Select a speed factor</option>
+      {% for speedFactor in speedFactors %}
+        {% set selected = '' %}
+        {% if speedFactor == settings.speedFactor %}
+          {% set selected = 'selected="selected"' %}
+        {% endif %}
+        <option value="{{ speedFactor }}" {{ selected }}>{{ speedFactor }}</option>
+      {% endfor %}
+    </select>
+    <p class="help-block">This is the speed factor for the bot.</p>
+  </div>
   {% endif %}
 
   {% if not hasRole('ROLE_COURIER') %}
@@ -50,6 +64,7 @@
     <p class="help-block">This is the frequency of ordering.</p>
   </div>
   {% endif %}
+
   <button type="submit" class="btn btn-primary">Submit</button>
 </form>
 {% endblock %}
