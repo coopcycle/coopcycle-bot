@@ -1,17 +1,16 @@
 var pm2 = require('pm2');
-var _ = require('underscore');
+var _ = require('lodash');
 var expressNunjucks = require('express-nunjucks');
 var bodyParser = require('body-parser');
 var fs = require('fs');
 var express = require('express');
 var Promise = require('promise');
-var schedule = require('node-schedule');
 
 const CONFIG = require('./config.json');
 
 require('./src/fetch-polyfill')
-const CoopCycle = require('coopcycle-js')
-const client = new CoopCycle.Client(CONFIG.COOPCYCLE_BASE_URL)
+const Client = require('./src/Client')
+const client = new Client(CONFIG.COOPCYCLE_BASE_URL)
 
 var assetsBaseURL = process.env.NODE_ENV === 'production' ? '/' : 'http://localhost:9091/';
 
@@ -20,7 +19,6 @@ var storage = multer.memoryStorage();
 var upload = multer({ storage: storage });
 
 var User = require('./src/User');
-var Customer = require('./src/Customer');
 var PM2Utils = require('./src/PM2Utils');
 
 const stripe = require("stripe")(CONFIG.STRIPE_SECRET_KEY);
@@ -50,7 +48,6 @@ var sequelize = new Sequelize('database', 'username', 'password', {
 var Db = require('./src/Db')(sequelize);
 
 Db.Courier.sync();
-Db.Customer.sync();
 Db.Routine.sync();
 
 /* Configure Passport */
@@ -72,7 +69,6 @@ passport.use(new LocalStrategy(
   function(username, password, done) {
     client.login(username, password)
       .then((user) => {
-
         Db.Courier.findOne({
           where: {username: user.username}
         })
@@ -83,22 +79,6 @@ passport.use(new LocalStrategy(
             courier.set('refreshToken', user.refresh_token);
 
             return courier.save();
-          }
-        })
-        .then(() => {
-          done(null, user);
-        });
-
-        Db.Customer.findOne({
-          where: {username: user.username}
-        })
-        .then((customer) => {
-          if (customer) {
-            console.log('Updating credentials in DB...');
-            customer.set('token', user.token);
-            customer.set('refreshToken', user.refresh_token);
-
-            return customer.save();
           }
         })
         .then(() => {
@@ -144,7 +124,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 function hasRole(req, role) {
-  return req.isAuthenticated() ? _.contains(req.user.roles, role) : false;
+  return req.isAuthenticated() ? _.includes(req.user.roles, role) : false;
 }
 
 app.use(function(req, res, next) {
@@ -190,38 +170,6 @@ function refreshApps() {
   });
 }
 
-var FREQUENCIES = {
-  '*/2 * * * *': 'Every 2 minutes',
-  '*/5 * * * *': 'Every 5 minutes',
-  '*/10 * * * *': 'Every 10 minutes',
-  '*/30 * * * *': 'Every 30 minutes',
-}
-
-function runCustomerBots(frequency) {
-  console.log('Cron job running ' + frequency);
-  Db.Customer.findAll({
-    where: {
-      frequency: frequency,
-    }
-  }).then((customers) => {
-    customers.forEach((model) => {
-      var customer = new Customer(model);
-      customer.createRandomOrder()
-        .then((order) => {
-          io.sockets.emit('order', order);
-        })
-        .catch((err) => {
-          console.log('Could not create order', err);
-        })
-    });
-  })
-}
-
-_.keys(FREQUENCIES).forEach((frequency) => {
-  console.log('Scheduling function for frequency ' + frequency)
-  schedule.scheduleJob(frequency, () => runCustomerBots(frequency));
-})
-
 var atLeastOne = false;
 io.on('connection', function (socket) {
   if (!atLeastOne) {
@@ -237,9 +185,6 @@ app.get('/', (req, res) => {
     include: [Db.Routine],
     attributes: ['id', 'username']
   }));
-  promises.push(Db.Customer.findAll({
-    attributes: ['id', 'username', 'frequency']
-  }));
   promises.push(new Promise((resolve, reject) => {
     if (!req.isAuthenticated()) {
       return resolve(null);
@@ -250,32 +195,18 @@ app.get('/', (req, res) => {
       }
     }).then((courier) => resolve(courier));
   }));
-  promises.push(new Promise((resolve, reject) => {
-    if (!req.isAuthenticated()) {
-      return resolve(null);
-    }
-    Db.Customer.findOne({
-      where: {
-        username: req.user.username
-      }
-    }).then((customer) => resolve(customer));
-  }));
 
   Promise.all(promises).then((values) => {
     var couriers = values[0];
-    var customers = values[1];
-    var courier = values[2];
-    var customer = values[3];
+    var courier = values[1];
 
     res.render('index', {
       couriers: couriers,
-      customers: customers,
-      isConfigured: (courier && courier.routineId) || (customer && customer.frequency),
+      isConfigured: (courier && courier.routineId),
     });
   });
 
 });
-
 
 app.get('/login', (req, res) => {
   var errors = req.flash('error');
@@ -313,24 +244,9 @@ app.get('/settings', ensureLoggedIn(), (req, res) => {
     });
   }
 
-  if (!hasRole(req, 'ROLE_COURIER')) {
-    Db.Customer.findOne({
-        where: {username: req.user.username}
-      }).then((customer) => {
-        res.render('settings', {
-          settings: {
-            frequency: customer ? customer.frequency : null
-          },
-          frequencies: FREQUENCIES,
-          messages: req.flash()
-        });
-      });
-  }
-
 });
 
 app.post('/settings', ensureLoggedIn(), (req, res) => {
-
   if (hasRole(req, 'ROLE_COURIER')) {
     if (req.body.routine) {
       Db.Courier.findOne({
@@ -362,39 +278,6 @@ app.post('/settings', ensureLoggedIn(), (req, res) => {
       res.redirect('/settings');
     }
   }
-
-  if (!hasRole(req, 'ROLE_COURIER')) {
-    if (req.body.frequency) {
-      Db.Customer.findOne({
-        where: {username: req.user.username}
-      })
-      .then((customer) => {
-        if (customer) {
-          customer.set('frequency', req.body.frequency);
-          return customer.save();
-        }
-
-        return Db.Customer.create({
-          username: req.user.username,
-          token: req.user.token,
-          refreshToken: req.user.refresh_token,
-          frequency: req.body.frequency,
-        });
-
-        })
-        .then((customer) => {
-          req.flash('info', 'Settings saved');
-          res.redirect('/settings');
-        })
-        .catch((err) => {
-          console.log(err);
-        });
-    } else {
-      req.flash('error', 'No frequency selected');
-      res.redirect('/settings');
-    }
-  }
-
 });
 
 app.post('/bots/:id/start', ensureLoggedIn(), (req, res) => {
@@ -441,16 +324,6 @@ app.post('/couriers/:id/delete', ensureLoggedIn(), (req, res) => {
       id: req.params.id
     }
   }).then(() => res.redirect('/'));
-});
-
-app.post('/customers/:id/delete', ensureLoggedIn(), (req, res) => {
-  if (hasRole(req, 'ROLE_ADMIN')) {
-    Db.Customer.destroy({
-      where: {
-        id: req.params.id
-      }
-    }).then(() => res.redirect('/'));
-  }
 });
 
 app.get('/routines', (req, res) => {

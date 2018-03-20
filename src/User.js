@@ -1,4 +1,4 @@
-var _ = require('underscore');
+var _ = require('lodash');
 
 function User(user) {
   this.isAuthenticated = false;
@@ -16,7 +16,7 @@ User.prototype.isAuthenticated = function() {
 }
 
 User.prototype.hasRole = function(role) {
-  return _.contains(this.roles, role);
+  return _.includes(this.roles, role);
 }
 
 module.exports = User;

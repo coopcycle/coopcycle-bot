@@ -1,5 +1,5 @@
 var notify = require('bootstrap-notify');
-var _ = require('underscore');
+var _ = require('lodash');
 
 var hostname = window.location.hostname;
 if (window.location.port) {
@@ -23,13 +23,6 @@ $('#couriers button.start-stop').not('.disabled').on('click', function(e) {
         console.log(response);
       });
   }
-});
-
-socket.on('order', function (order) {
-  console.log('New order created', order);
-  $.notify('New order for restaurant ' + order.restaurant.name, {
-    delay: 2000
-  });
 });
 
 socket.on('apps', function (apps) {

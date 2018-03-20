@@ -26,18 +26,6 @@ module.exports = function(sequelize) {
     },
   });
 
-  var Customer = sequelize.define('customer', {
-    id: {
-      type: Sequelize.INTEGER,
-      primaryKey: true,
-      autoIncrement: true
-    },
-    username: Sequelize.STRING,
-    token: Sequelize.STRING,
-    refreshToken: Sequelize.STRING,
-    frequency: Sequelize.STRING,
-  });
-
   var Routine = sequelize.define('routine', {
     id: {
       type: Sequelize.INTEGER,
@@ -52,7 +40,6 @@ module.exports = function(sequelize) {
 
   return {
     Courier: Courier,
-    Customer: Customer,
     Routine: Routine
   };
 }

@@ -1,5 +1,3 @@
 {
-    "COOPCYCLE_BASE_URL": "http://localhost",
-    "GOOGLE_API_KEY": "",
-    "STRIPE_SECRET_KEY": ""
+    "COOPCYCLE_BASE_URL": "http://localhost"
 }

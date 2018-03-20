@@ -3,7 +3,7 @@
  * It uses a GPX file to determine its itinerary.
  */
 var fs = require('fs');
-var _ = require('underscore');
+var _ = require('lodash');
 var parseXML = require('xml2js').parseString;
 var Courier = require('./src/Courier');
 var PM2Utils = require('./src/PM2Utils');
@@ -23,10 +23,13 @@ var username = process.argv[2];
 var password = process.argv[3];
 var gpxFile = process.argv[4];
 var httpBaseURL = CONFIG.COOPCYCLE_BASE_URL;
-var wsBaseURL = httpBaseURL.startsWith('http://') ? httpBaseURL.replace('http://', 'ws://') : httpBaseURL.replace('https://', 'wss://');
+
+require('./src/fetch-polyfill')
+const Client = require('./src/Client')
+const WebSocketClient = require('./src/WebSocketClient')
 
 var xml = fs.readFileSync(gpxFile);
-var points = [];
+var route = [];
 var courier;
 
 Db.Courier.findOne({
@@ -37,16 +40,29 @@ Db.Courier.findOne({
   parseXML(xml, function (err, result) {
 
     _.each(result.gpx.wpt, function(point) {
-      points.push({
+      route.push({
         latitude: point['$'].lat,
         longitude: point['$'].lon
       })
     });
 
+    const client = new Client(CONFIG.COOPCYCLE_BASE_URL, {
+      token: model.token,
+      refresh_token: model.refreshToken,
+    }, {
+      autoLogin: client => client.login(model.username, model.username)
+    })
+
+    const webSocketClient = new WebSocketClient(client, '/dispatch')
+
     courier = new Courier(
-      model,
-      points,
-      wsBaseURL
+      model.username,
+      client,
+      webSocketClient,
+      {
+        lastPosition: model.get('lastPosition'),
+        route: route
+      }
     );
 
     try {
@@ -57,12 +73,13 @@ Db.Courier.findOne({
     }
 
   });
-});
 
-process.on('SIGINT', function () {
-  var currentPosition = courier.currentPosition;
-  if (currentPosition) {
-    courier.model.set('lastPosition', JSON.stringify(currentPosition));
-    courier.model.save();
-  }
+  process.on('SIGINT', function () {
+    var currentPosition = courier.currentPosition;
+    if (currentPosition) {
+      model.set('lastPosition', JSON.stringify(currentPosition));
+      model.save();
+    }
+  });
+
 });

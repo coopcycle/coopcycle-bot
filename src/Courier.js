@@ -1,17 +1,10 @@
-var fs = require('fs');
-var WebSocket = require('ws');
-var FormData = require('form-data');
-var _ = require('underscore');
+var _ = require('lodash');
 var Promise = require('promise');
 var Polyline = require('polyline');
+const moment = require('moment')
 
 var winston = require('winston');
 winston.level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
-
-const CONFIG = require('../config.json')
-
-require('./fetch-polyfill')
-const CoopCycle = require('coopcycle-js')
 
 var toPolylineCoordinates = function(polyline) {
   var steps = Polyline.decode(polyline);
@@ -28,39 +21,19 @@ var toPolylineCoordinates = function(polyline) {
   return polylineCoords;
 }
 
-function Courier(model, route, wsBaseURL) {
+function Courier(username, client, webSocketClient, options) {
 
-  this.model = model;
-  const clientOptions = {
-    autoLogin: client => {
-      return new Promise((resolve, reject) => {
-        return client.login(model.username, model.username)
-          .then(credentials => {
-            console.log('Updating credentials in DB...');
-            this.model.set('token', credentials.token);
-            this.model.set('refreshToken', credentials.refresh_token);
+  this.username = username
+  this.client = client
+  this.webSocketClient = webSocketClient
 
-            return resolve(credentials)
-          })
-          .catch(err => reject(err))
-      })
-    }
-  }
-  this.client = new CoopCycle.Client(CONFIG.COOPCYCLE_BASE_URL, {
-    token: model.token,
-    refresh_token: model.refreshToken,
-  }, clientOptions)
-
-  this.route = route;
-  this.wsBaseURL = wsBaseURL;
+  const { lastPosition, route } = options
 
   this.timeout = undefined;
-  this.ws = undefined;
-
   this.currentIndex = 0;
   this.currentPosition = undefined;
 
-  var lastPosition = this.model.get('lastPosition');
+  this.route = route
 
   if (lastPosition) {
     this.info('Starting at last position', lastPosition);
@@ -78,15 +51,15 @@ function Courier(model, route, wsBaseURL) {
 }
 
 Courier.prototype.debug = function(msg, data) {
-  winston.debug('[' + this.model.username + '] ' + msg, data);
+  winston.debug(`[${this.username}] ${msg}`, data);
 }
 
 Courier.prototype.info = function(msg, data) {
-  winston.info('[' + this.model.username + '] ' + msg, data);
+  winston.info(`[${this.username}] ${msg}`, data);
 }
 
 Courier.prototype.error = function(msg, data) {
-  winston.error('[' + this.model.username + '] ' + msg, data);
+  winston.error(`[${this.username}] ${msg}`, data);
 }
 
 Courier.prototype.randomPosition = function() {
@@ -109,59 +82,35 @@ Courier.prototype.nextPosition = function() {
 }
 
 Courier.prototype.updateCoords = function() {
-  if (this.ws.readyState === WebSocket.OPEN) {
-    this.nextPosition();
-    this.sendCurrentPosition();
-  }
-  this.timeout = setTimeout(this.updateCoords.bind(this), 2000);
+
+  this.nextPosition()
+  this.timeout = setTimeout(this.updateCoords.bind(this), 2000)
+
+  this.sendCurrentPosition()
+
 }
 
+
+
 Courier.prototype.connect = function() {
-  this.info('Checking status...');
-  this.client.request('GET', '/api/me/status')
-    .then(data => {
+  this.client.get('/api/me/tasks/' + moment().format('YYYY-MM-DD'))
+    .then(tasks => {
 
-      this.info('Status = ' + data.status);
+      const task = _.find(tasks['hydra:member'], task => task.status === 'TODO')
 
-      this.info('Connecting to WS server');
-      this.ws = new WebSocket(this.wsBaseURL + '/realtime', '', {
-        headers: {
-          Authorization: "Bearer " + this.model.get('token')
-        }
-      });
+      this.webSocketClient
+        .connect()
+        .then(() => {
+          this.info('Connected to WebSocket!');
+          if (task) {
+            this.executeTask(task)
+          } else {
+            this.updateCoords();
+          }
+        })
 
-      this.ws.onopen = () => {
-
-        this.info('Connected to WS server!');
-
-        clearTimeout(this.timeout);
-
-        if (data.status === 'DELIVERING') {
-          this.info('Resuming delivery of delivery', data.delivery);
-          this.resumeDelivery(data.delivery);
-        } else {
-          this.info('Resuming routine');
-          this.updateCoords();
-        }
-      }
-
-      this.ws.onmessage = this.onMessage.bind(this);
-
-      this.ws.onclose = (e) => {
-        this.info('Connection closed!');
-        clearTimeout(this.timeout);
-        setTimeout(this.connect.bind(this), 1000);
-      }
-
-      this.ws.onerror = (e) => {
-        this.info('Connection error!', e.message);
-        this.ws.onclose = function () {}; // Disable onclose handler
-        clearTimeout(this.timeout);
-        this.info('Will retry connecting in 5s');
-        setTimeout(this.connect.bind(this), 5000);
-      }
     })
-    .catch(err => {
+    .catch(e => {
       throw new Error('Fatal error', e);
     });
 }
@@ -181,117 +130,80 @@ function _goto(route, milliseconds, cb) {
 
 Courier.prototype.goto = function(destination, cb) {
 
-  var originParam = [this.currentPosition.latitude, this.currentPosition.longitude].join(',');
-  var destinationParam = [destination.latitude, destination.longitude].join(',');
+  var originParam = [
+    this.currentPosition.latitude,
+    this.currentPosition.longitude
+  ].join(',')
 
-  this.client
-    .request('GET', '/api/routing/route/' + originParam + ';' + destinationParam)
-    .then((data) => {
+  var destinationParam = [
+    destination.latitude,
+    destination.longitude
+  ].join(',');
 
-      var duration = data.routes[0].duration;
-      var route = toPolylineCoordinates(data.routes[0].geometry);
-      var milliseconds = Math.ceil((duration / route.length) * 1000);
+  return new Promise((resolve, reject) => {
+    this.client
+      .get(`/api/routing/route/${originParam};${destinationParam}`)
+      .then((data) => {
 
-      this.info('Going to ' + JSON.stringify(destination) + ' in ' + Math.ceil((duration / 60).toFixed(2)) + 'min'
-          + ' (' + route.length + ' steps, ' + (milliseconds / 1000) + 's per step)');
-      _goto.call(this, route, milliseconds, () => {
-        this.info('Arrived at ' + JSON.stringify(destination));
-        cb();
-      });
-    })
-    .catch(err => console.log(err));
+        var duration = data.routes[0].duration;
+
+        // TODO Implement speed factor
+        // duration = duration / 10
+
+        var route = toPolylineCoordinates(data.routes[0].geometry);
+        var milliseconds = Math.ceil((duration / route.length) * 1000);
+
+        this.info('Going to ' + JSON.stringify(destination) + ' in ' + Math.ceil((duration / 60).toFixed(2)) + 'min'
+            + ' (' + route.length + ' steps, ' + (milliseconds / 1000) + 's per step)');
+
+        _goto.call(this, route, milliseconds, () => {
+          this.info('Arrived at ' + JSON.stringify(destination));
+          resolve()
+        });
+      })
+      .catch(err => console.log(err));
+  })
 }
 
-Courier.prototype.resumeDelivery = function(delivery) {
-  if (delivery.status === 'DISPATCHED') {
-    this.info('Going to restaurant to pick delivery');
-    this.goto(delivery.originAddress, () => {
-      this.info('Arrived at restaurant!');
-      this.pickDelivery(delivery);
-    });
-  }
-  if (delivery.status === 'PICKED') {
-    this.info('Going to delivery address to deliver delivery');
-    this.goto(delivery.deliveryAddress, () => {
-      this.info('Arrived at delivery address!');
-      this.deliverDelivery(delivery);
-    });
-  }
-}
-
-Courier.prototype.acceptDelivery = function(delivery) {
-  this.info('Accepting delivery #' + delivery.id);
-  this.client.request('PUT', '/api/deliveries/' + delivery.id + '/accept', {})
+Courier.prototype.executeTask = function(task) {
+  this.info(`Executing task #${task.id}`)
+  this.goto(task.address.geo)
     .then(() => {
-      this.info('Delivery #' + delivery.id + ' accepted!');
-      this.info('Going to restaurant to pick delivery');
-      this.goto(delivery.originAddress, () => {
-        this.info('Arrived to restaurant!');
-        this.pickDelivery(delivery);
-      });
+      this.client
+        .put(task['@id'] + '/done', { notes: 'DONE' })
+        .then(task => {
+          this.info(`Task #${task.id} executed!`)
+          return this.client.get('/api/me/tasks/' + moment().format('YYYY-MM-DD'))
+        })
+        .then(tasks => _.find(tasks['hydra:member'], task => task.status === 'TODO'))
+        .then(task => {
+          if (task) {
+            this.executeTask(task)
+          } else {
+            this.info(`Nothing to do, resuming routine`)
+            this.currentIndex = this.randomPosition();
+            var randomPosition = this.route[this.currentIndex];
+            this.goto(randomPosition)
+              .then(() => {
+                clearTimeout(this.timeout)
+                this.updateCoords()
+              })
+          }
+        })
     })
-    .catch((e) => {
-      this.error('CANNOT ACCEPT #' + delivery.id)
-      throw new Error('CANNOT ACCEPT #' + delivery.id, e);
-    });
-}
-
-Courier.prototype.pickDelivery = function(delivery) {
-  this.info('Picking delivery #' + delivery.id);
-  this.client.request('PUT', '/api/deliveries/' + delivery.id + '/pick', {})
-    .then(() => {
-      this.info('Delivery #' + delivery.id + ' picked!');
-      this.info('Going to delivery address to deliver delivery');
-      this.goto(delivery.deliveryAddress, () => {
-        this.info('Arrived at delivery address!');
-        this.deliverDelivery(delivery);
-      });
-    })
-    .catch((e) => {
-      this.error('CANNOT PICK #' + delivery.id)
-      throw new Error('CANNOT PICK #' + delivery.id, e);
-    });
-}
-
-Courier.prototype.deliverDelivery = function(delivery) {
-  this.info('Delivering delivery #' + delivery.id);
-  this.client.request('PUT', '/api/deliveries/' + delivery.id + '/deliver', {})
-    .then(() => {
-      this.info('Delivery #' + delivery.id + ' delivered!');
-      this.info('Delivery delivered, going back to routine');
-      this.currentIndex = this.randomPosition();
-      var randomPosition = this.route[this.currentIndex];
-      this.goto(randomPosition, () => {
-        this.info('Restarting routine');
-        clearTimeout(this.timeout);
-        this.updateCoords();
-      });
-    })
-    .catch((e) => {
-      this.error('CANNOT DELIVER #' + delivery.id)
-      throw new Error('CANNOT DELIVER #' + delivery.id, e);
-    });
 }
 
 Courier.prototype.onMessage = function(e) {
-
   var message = JSON.parse(e.data);
   this.info('Message received!', message);
-
-  if (message.type === 'delivery') {
-    clearTimeout(this.timeout);
-    setTimeout(this.acceptDelivery.bind(this, message.delivery), 5000);
-  }
 }
 
 Courier.prototype.sendCurrentPosition = function() {
-  if (this.ws.readyState === WebSocket.OPEN) {
-    this.debug('Sendind position', this.currentPosition);
-    this.ws.send(JSON.stringify({
-      type: "updateCoordinates",
-      coordinates: this.currentPosition
-    }));
-  }
+  this.debug('Sendind position', this.currentPosition);
+  this.webSocketClient.send({
+    type: "position",
+    data: this.currentPosition
+  })
 }
 
 module.exports = Courier;
